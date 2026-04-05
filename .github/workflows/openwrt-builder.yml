@@ -97,6 +97,7 @@ jobs:
       - name: ⚙️ 配置编译目标
         run: |
           cd openwrt
+
           {
             echo "CONFIG_TARGET_qualcommax=y"
             echo "CONFIG_TARGET_qualcommax_ipq60xx=y"
@@ -136,11 +137,30 @@ jobs:
             echo "# CONFIG_PACKAGE_docker is not set"
           } > .config
 
+          echo "=== 第一次 defconfig 前验证 ==="
+          grep "CONFIG_TARGET_qualcommax" .config && echo "目标写入成功" || echo "目标写入失败"
+
           make defconfig
 
-          echo "=== 目标配置验证 ==="
+          echo "=== 第一次 defconfig 后验证 ==="
+          grep "CONFIG_TARGET_qualcommax" .config || echo "被覆盖了"
+
+          # 强制把目标写回
+          grep -v "^CONFIG_TARGET_" .config > .config.tmp
+          {
+            echo "CONFIG_TARGET_qualcommax=y"
+            echo "CONFIG_TARGET_qualcommax_ipq60xx=y"
+            echo "CONFIG_TARGET_qualcommax_ipq60xx_DEVICE_qihoo_360v6=y"
+          } >> .config.tmp
+          mv .config.tmp .config
+
+          # 再跑一次 defconfig 让其他依赖基于正确目标展开
+          make defconfig
+
+          echo "=== 最终验证 ==="
           grep "CONFIG_TARGET_qualcommax" .config || echo "⚠️ 未找到 qualcommax 目标配置"
           grep "CONFIG_TARGET_qualcommax_ipq60xx_DEVICE_qihoo_360v6" .config || echo "⚠️ 未找到 360V6 设备配置"
+          grep "CONFIG_TARGET_BOARD" .config || echo "⚠️ 未找到 BOARD 配置"
 
       - name: ⬇️ 下载编译所需软件包
         run: |
