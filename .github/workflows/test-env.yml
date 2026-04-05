@@ -1,0 +1,50 @@
+name: 🔬 Test Environment Only
+
+on:
+  workflow_dispatch:
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true  # ✅ 解决 Node.js 警告
+  TZ: Asia/Shanghai
+
+jobs:
+  test:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
+    
+    steps:
+      - name: 📦 Checkout
+        uses: actions/checkout@v5  # ✅ 升级到 v5
+
+      - name: 🛠️ Setup Environment
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y git curl wget ca-certificates
+          git --version
+          curl --version
+
+      - name: 🌐 Test Git Clone (Public Repo)
+        run: |
+          # ✅ 关键：禁用交互式认证
+          export GIT_TERMINAL_PROMPT=0
+          export GIT_ASKPASS=/bin/echo
+          
+          # 测试克隆一个公开仓库
+          git clone --depth 1 https://github.com/openwrt/openwrt.git /tmp/test-openwrt
+          ls -la /tmp/test-openwrt | head -10
+          echo "✅ Git clone test passed!"
+
+      - name: 📦 Test Curl Download
+        run: |
+          # 测试 curl 下载（备用方案）
+          curl -L -o /tmp/test.tar.gz \
+            https://github.com/xiaorouji/openwrt-passwall/archive/refs/heads/main.tar.gz
+          ls -lh /tmp/test.tar.gz
+          echo "✅ Curl download test passed!"
+
+      - name: 📤 Upload Test Result
+        uses: actions/upload-artifact@v5  # ✅ 升级到 v5
+        with:
+          name: test-result-${{ github.run_number }}
+          path: /tmp/test.tar.gz
+          retention-days: 1
