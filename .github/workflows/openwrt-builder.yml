@@ -53,13 +53,11 @@ jobs:
         run: |
           cd openwrt
 
-          # 通用下载函数：带 User-Agent + 下载后验证文件类型
           gh_download() {
             local url="$1"
             local dest="$2"
             local tmp
             tmp=$(mktemp /tmp/pkg_XXXXXX.tar.gz)
-
             echo ">>> 下载: $url"
             curl -L -s \
               --retry 3 \
@@ -67,36 +65,30 @@ jobs:
               -H "User-Agent: Mozilla/5.0 (GitHub Actions OpenWrt Builder)" \
               -o "$tmp" \
               "$url"
-
             if ! file "$tmp" | grep -q "gzip compressed"; then
-              echo "❌ 下载失败，收到的不是 gzip 文件，实际内容："
+              echo "❌ 下载失败，实际内容："
               head -5 "$tmp"
               rm -f "$tmp"
               return 1
             fi
-
             mkdir -p "$dest"
             tar -xzf "$tmp" -C "$dest" --strip-components=1
             rm -f "$tmp"
             echo "✅ 安装完成: $dest"
           }
 
-          # PassWall 本体
           gh_download \
             "https://github.com/xiaorouji/openwrt-passwall/archive/refs/heads/main.tar.gz" \
             "package/luci-app-passwall"
 
-          # PassWall 依赖包（xray-core / sing-box 等，缺少会导致编译报错）
           gh_download \
             "https://github.com/xiaorouji/openwrt-passwall-packages/archive/refs/heads/main.tar.gz" \
             "package/passwall-packages"
 
-          # AdGuardHome（kenzok8 fork，rufengsuixing 原仓库已停止维护）
           gh_download \
             "https://github.com/kenzok8/luci-app-adguardhome/archive/refs/heads/master.tar.gz" \
             "package/luci-app-adguardhome"
 
-          # Argon 主题
           rm -rf package/lean/luci-theme-argon 2>/dev/null || true
           gh_download \
             "https://github.com/jerrykuku/luci-theme-argon/archive/refs/heads/master.tar.gz" \
@@ -112,7 +104,6 @@ jobs:
         run: |
           cd openwrt
           cp $GITHUB_WORKSPACE/$CONFIG_FILE .config
-          # 必须在 feeds install 之后执行，确保所有包符号都被正确解析
           make defconfig
           echo "=== 目标配置验证 ==="
           grep "CONFIG_TARGET_qualcommax" .config || echo "⚠️ 未找到 qualcommax 目标配置"
@@ -122,7 +113,6 @@ jobs:
         run: |
           cd openwrt
           make download -j$(nproc)
-          # 删除下载不完整的文件（小于 1KB）
           find dl -size -1024c -exec rm -f {} \;
 
       - name: 🔨 编译固件
@@ -131,7 +121,6 @@ jobs:
           cd openwrt
           echo "🔨 开始编译，使用 $(nproc) 线程..."
           make -j$(nproc) V=s 2>&1 | tee build.log
-
           if [ ${PIPESTATUS[0]} -eq 0 ]; then
             echo "status=success" >> $GITHUB_OUTPUT
             echo "✅ 编译成功！"
@@ -171,7 +160,7 @@ jobs:
             - 源码 Commit: ${{ env.OPENWRT_COMMIT }}
             - 构建编号: ${{ github.run_number }}
             - 构建日期: ${{ env.BUILD_DATE }}
-            
+
             ### 内置插件
             - PassWall（科学上网）
             - AdGuardHome（广告过滤）
