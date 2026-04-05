@@ -88,10 +88,6 @@ jobs:
             "https://github.com/jerrykuku/luci-theme-argon/archive/refs/heads/master.tar.gz" \
             "package/luci-theme-argon"
 
-          gh_download \
-            "https://github.com/kenzok8/openwrt-packages/archive/refs/heads/master.tar.gz" \
-            "package/kenzok8-packages"
-
       - name: 🔄 更新 Feeds
         run: |
           cd openwrt
