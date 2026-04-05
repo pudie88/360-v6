@@ -55,10 +55,24 @@ jobs:
         sudo timedatectl set-timezone "$TZ"
         df -h
 
-    - name: 克隆 LEDE 源码
+    - name: 克隆 OpenWrt 源码
       run: |
         git clone --depth 1 $REPO_URL -b $REPO_BRANCH openwrt
+        
+        # ✅ 配置 git 避免交互式认证
+        cd openwrt
+        git config --global credential.helper store
+        git config --global http.extraheader ""
+        git config --global url."https://github.com/".insteadOf "git@github.com:"
 
+    - name: 执行 DIY 脚本
+      run: |
+        chmod +x $GITHUB_WORKSPACE/$DIY_SCRIPT
+        cd openwrt
+        # ✅ 设置环境变量避免认证提示
+        export GIT_TERMINAL_PROMPT=0
+        export GIT_ASKPASS=/bin/echo
+        bash $GITHUB_WORKSPACE/$DIY_SCRIPT
     # ── DIY 脚本必须在 feeds update 之前执行 ────────────────────
     - name: 执行 DIY 脚本
       run: |
