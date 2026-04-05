@@ -122,15 +122,18 @@ jobs:
         id: compile
         run: |
           cd openwrt
-          echo "🔨 开始编译，使用 $(nproc) 线程..."
-          make -j$(nproc) V=s 2>&1 | tee build.log
+          echo "🔨 开始编译..."
+
+          # 先单线程编译，报错信息更清晰
+          make -j1 V=s 2>&1 | tee build.log
+
           if [ ${PIPESTATUS[0]} -eq 0 ]; then
             echo "status=success" >> $GITHUB_OUTPUT
             echo "✅ 编译成功！"
           else
             echo "status=failure" >> $GITHUB_OUTPUT
-            echo "❌ 编译失败，最后 100 行日志："
-            tail -100 build.log
+            echo "❌ 编译失败，最后 50 行："
+            tail -50 build.log
             exit 1
           fi
 
