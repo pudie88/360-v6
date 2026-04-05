@@ -1,181 +1,161 @@
-name: Build OpenWrt for 360 V6
+name: Build OpenWrt for 360 V6 (Fixed)
 
 on:
   workflow_dispatch:
   push:
     branches: [ main, master ]
     paths:
-      - 'diy-script.sh'
       - 'configs/**'
-      - '.github/workflows/build-360v6.yml'
-  schedule:
-    - cron: '0 3 * * 0'
+      - '.github/workflows/build-360v6-fixed.yml'
 
 env:
-  REPO_URL: https://github.com/coolsnowwolf/lede
-  REPO_BRANCH: master
+  # ✅ 解决 Node.js 20 弃用警告
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  
+  REPO_URL: https://github.com/openwrt/openwrt
+  REPO_BRANCH: openwrt-23.05
   CONFIG_FILE: configs/Qihoo-V6.config
-  DIY_SCRIPT: diy-script.sh
-  UPLOAD_FIRMWARE: true
   TZ: Asia/Shanghai
 
 jobs:
   build:
     runs-on: ubuntu-22.04
-
+    timeout-minutes: 360
+    
     steps:
-    - name: 检出仓库
-      uses: actions/checkout@v4
+      - name: 📦 Checkout
+        uses: actions/checkout@v5
 
-    # ── 修复1：磁盘清理放到最前面，释放约 20GB ──────────────────
-    - name: 释放磁盘空间
-      run: |
-        sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc \
-                    /usr/local/share/boost "$AGENT_TOOLSDIRECTORY" \
-                    /usr/share/swift /usr/local/.ghcup
-        docker rmi $(docker images -q) 2>/dev/null || true
-        sudo apt-get autoremove -y --purge 2>/dev/null || true
-        sudo apt-get clean
-        df -h
+      - name: 🗑️ Free Disk Space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
+          sudo docker rmi $(docker images -q) 2>/dev/null || true
+          sudo apt-get autoremove -y --purge
+          sudo apt-get clean
+          df -h
 
-    - name: 初始化编译环境
-      env:
-        DEBIAN_FRONTEND: noninteractive
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y \
-          ack antlr3 asciidoc autoconf automake autopoint binutils bison build-essential \
-          bzip2 ccache cmake cpio curl device-tree-compiler fastjar flex gawk gettext \
-          gcc-multilib g++-multilib git gperf haveged help2man intltool libc6-dev-i386 \
-          libelf-dev libglib2.0-dev libgmp3-dev libltdl-dev libmpc-dev libmpfr-dev \
-          libncurses5-dev libncursesw5-dev libreadline-dev libssl-dev libtool lrzsz \
-          mkisofs msmtp ninja-build p7zip p7zip-full patch pkgconf python3 \
-          python3-pyelftools qemu-utils rsync scons squashfs-tools subversion swig \
-          texinfo uglifyjs upx-ucl unzip vim wget xmlto xxd zlib1g-dev nano
-        sudo timedatectl set-timezone "$TZ"
-        df -h
+      - name: 🛠️ Install Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential clang flex bison g++ gawk gcc-multilib g++-multilib \
+            gettext git libncurses5-dev libssl-dev python3 python3-pip rsync \
+            swig unzip zlib1g-dev wget curl ca-certificates
+          sudo timedatectl set-timezone "$TZ"
 
-    - name: 克隆 OpenWrt 源码
-      run: |
-        git clone --depth 1 $REPO_URL -b $REPO_BRANCH openwrt
-        
-        # ✅ 配置 git 避免交互式认证
-        cd openwrt
-        git config --global credential.helper store
-        git config --global http.extraheader ""
-        git config --global url."https://github.com/".insteadOf "git@github.com:"
+      - name: 📥 Clone OpenWrt Source
+        run: |
+          git clone --depth 1 -b $REPO_BRANCH $REPO_URL openwrt
+          cd openwrt
+          echo "COMMIT=$(git rev-parse HEAD)" >> $GITHUB_ENV
 
-    - name: 执行 DIY 脚本
-      run: |
-        chmod +x $GITHUB_WORKSPACE/$DIY_SCRIPT
-        cd openwrt
-        # ✅ 设置环境变量避免认证提示
-        export GIT_TERMINAL_PROMPT=0
-        export GIT_ASKPASS=/bin/echo
-        bash $GITHUB_WORKSPACE/$DIY_SCRIPT
-    # ── DIY 脚本必须在 feeds update 之前执行 ────────────────────
-    - name: 执行 DIY 脚本
-      run: |
-        chmod +x $GITHUB_WORKSPACE/$DIY_SCRIPT
-        cd openwrt
-        bash $GITHUB_WORKSPACE/$DIY_SCRIPT
+      - name: ⚙️ Configure Target
+        run: |
+          cd openwrt
+          cp $GITHUB_WORKSPACE/$CONFIG_FILE .config
+          make defconfig
+          echo "=== Target Config ==="
+          grep "CONFIG_TARGET.*360" .config || echo "⚠️ No 360 config found"
 
-    - name: 更新并安装 Feeds
-      run: |
-        cd openwrt
-        ./scripts/feeds update -a
-        ./scripts/feeds install -a
+      - name: 🔄 Update Feeds
+        run: |
+          cd openwrt
+          ./scripts/feeds update -a
+          ./scripts/feeds install -a
 
-    - name: 载入自定义配置
-      run: |
-        cd openwrt
-        cp $GITHUB_WORKSPACE/$CONFIG_FILE .config
-        make defconfig
-        # 打印最终生效的目标配置，方便排查
-        grep "CONFIG_TARGET" .config | head -5
+      - name: 📦 Install Plugins (curl+tar method)
+        run: |
+          cd openwrt
+          
+          # ✅ 关键：使用 curl+tar 避免 git 认证问题
+          export GIT_TERMINAL_PROMPT=0
+          
+          # PassWall
+          if grep -q "CONFIG_PACKAGE_luci-app-passwall=y" .config; then
+            echo ">>> Installing PassWall via curl..."
+            mkdir -p package/luci-app-passwall
+            curl -L -s https://github.com/xiaorouji/openwrt-passwall/archive/refs/heads/main.tar.gz | \
+              tar -xzf - -C package/luci-app-passwall --strip-components=1
+          fi
+          
+          # AdGuardHome
+          if grep -q "CONFIG_PACKAGE_luci-app-adguardhome=y" .config; then
+            echo ">>> Installing AdGuardHome via curl..."
+            mkdir -p package/luci-app-adguardhome
+            curl -L -s https://github.com/rufengsuixing/luci-app-adguardhome/archive/refs/heads/master.tar.gz | \
+              tar -xzf - -C package/luci-app-adguardhome --strip-components=1
+          fi
+          
+          # Argon Theme
+          echo ">>> Installing Argon theme..."
+          rm -rf package/lean/luci-theme-argon 2>/dev/null || true
+          mkdir -p package/luci-theme-argon
+          curl -L -s https://github.com/jerrykuku/luci-theme-argon/archive/refs/heads/master.tar.gz | \
+            tar -xzf - -C package/luci-theme-argon --strip-components=1
 
-    - name: 下载编译依赖包
-      run: |
-        cd openwrt
-        make download -j$(nproc)
-        # 删除下载不完整的文件（小于 1KB）
-        find dl -size -1024c -exec rm -f {} \;
-        df -h
+      - name: ⬇️ Download Packages
+        run: |
+          cd openwrt
+          make download -j$(nproc)
+          find dl -size -1024c -exec rm -f {} \;
 
-    # ── 修复2：完整保存 build log，不再 tail 截断 ────────────────
-    - name: 编译固件
-      id: compile
-      run: |
-        cd openwrt
-        echo "CPU 核心数: $(nproc)"
-        echo "开始时间: $(date)"
-        # 多线程编译，失败后切换单线程并保存完整日志
-        make -j$(nproc) 2>&1 | tee /tmp/build_full.log || {
-          echo "::warning::多线程编译失败，切换单线程详细模式..."
-          make -j1 V=s 2>&1 | tee /tmp/build_verbose.log || {
-            echo "::error::单线程编译也失败，提取关键错误如下："
-            # 提取真正的错误行（从第一个 ERROR 开始）
-            grep -n "ERROR\|error:\|No space\|Cannot install\|undefined symbol\|Collected errors" \
-                 /tmp/build_verbose.log | head -40 || true
+      - name: 🔨 Compile Firmware
+        id: compile
+        run: |
+          cd openwrt
+          echo "🔨 Starting compilation with $(nproc) threads..."
+          
+          # 编译并实时输出日志
+          make -j$(nproc) V=s 2>&1 | tee build.log
+          
+          if [ ${PIPESTATUS[0]} -eq 0 ]; then
+            echo "status=success" >> $GITHUB_OUTPUT
+            echo "✅ Compilation successful!"
+          else
+            echo "❌ Compilation failed!"
+            echo "=== Last 100 lines of build.log ==="
+            tail -100 build.log
             exit 1
-          }
-        }
-        echo "status=success" >> $GITHUB_OUTPUT
-        echo "结束时间: $(date)"
+          fi
 
-    # ── 修复3：失败时上传完整日志 artifact ───────────────────────
-    - name: 上传编译日志（失败时）
-      if: failure()
-      uses: actions/upload-artifact@v4
-      with:
-        name: build-log-${{ github.run_number }}
-        path: |
-          /tmp/build_full.log
-          /tmp/build_verbose.log
-        retention-days: 3
+      - name: 📦 Prepare Firmware
+        if: steps.compile.outputs.status == 'success'
+        run: |
+          cd openwrt/bin/targets/*/*
+          rm -rf packages
+          echo "FIRMWARE_PATH=$PWD" >> $GITHUB_ENV
+          echo "=== Firmware Files ==="
+          ls -lh *.bin 2>/dev/null || echo "⚠️ No .bin files found"
 
-    - name: 整理固件文件
-      if: steps.compile.outputs.status == 'success'
-      run: |
-        cd openwrt/bin/targets/*/*
-        rm -rf packages
-        echo "FIRMWARE_PATH=$PWD" >> $GITHUB_ENV
+      - name: 📤 Upload to Artifacts
+        if: steps.compile.outputs.status == 'success'
+        uses: actions/upload-artifact@v5
+        with:
+          name: OpenWrt-360V6-${{ github.run_number }}
+          path: ${{ env.FIRMWARE_PATH }}/*.bin
+          retention-days: 7
 
-    - name: 上传固件到 Artifacts
-      if: steps.compile.outputs.status == 'success'
-      uses: actions/upload-artifact@v4
-      with:
-        name: 360-V6-Firmware-${{ github.run_number }}
-        path: ${{ env.FIRMWARE_PATH }}
-        retention-days: 7
+      - name: 🚀 Upload to Release
+        if: steps.compile.outputs.status == 'success'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ github.run_number }}
+          files: ${{ env.FIRMWARE_PATH }}/*squashfs*.bin
+          body: |
+            ## OpenWrt for 360 V6 (Qualcomm IPQ60xx)
+            - Branch: ${{ env.REPO_BRANCH }}
+            - Build: ${{ github.run_number }}
+            - Date: $(date '+%Y-%m-%d')
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-    - name: 发布到 Releases
-      if: steps.compile.outputs.status == 'success'
-      uses: softprops/action-gh-release@v1
-      with:
-        tag_name: v${{ github.run_number }}
-        name: 360-V6 固件 Build-${{ github.run_number }}
-        files: ${{ env.FIRMWARE_PATH }}/*
-        body: |
-          ## 360 V6 OpenWrt 固件
-
-          ### 包含插件
-          - PassWall（Xray + Hysteria）
-          - AdGuardHome + MosDNS（DNS 防污染 + 广告拦截）
-          - ZeroTier（远程访问）
-          - TurboACC（软件加速）
-          - Argon 主题
-          - ttyd 网页终端
-
-          ### 刷入方法
-          1. 进入不死 uboot（按住 Reset 插电，红灯亮松开）
-          2. 电脑设置静态 IP：192.168.1.3
-          3. 浏览器打开 192.168.1.1
-          4. 上传 `*-squashfs-nand-factory.bin` 刷入
-
-          ### 默认信息
-          - 后台地址：192.168.2.1
-          - 用户名：root
-          - 密码：首次登录自行设置
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: 📋 Upload Build Log (Always)
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: build-log-${{ github.run_number }}
+          path: openwrt/build.log
+          retention-days: 3
+          if-no-files-found: ignore
