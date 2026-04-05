@@ -77,21 +77,22 @@ jobs:
             echo "✅ 安装完成: $dest"
           }
 
-          # ✅ 新地址：xiaorouji 已迁移到 Openwrt-Passwall 组织
+          # PassWall 本体（新组织地址）
           gh_download \
             "https://github.com/Openwrt-Passwall/openwrt-passwall/archive/refs/heads/main.tar.gz" \
             "package/luci-app-passwall"
 
+          # PassWall 依赖包（新组织地址）
           gh_download \
             "https://github.com/Openwrt-Passwall/openwrt-passwall-packages/archive/refs/heads/main.tar.gz" \
             "package/passwall-packages"
 
-          # ✅ AdGuardHome
+          # AdGuardHome（small-package 合集仓库）
           gh_download \
             "https://github.com/kenzok8/small-package/archive/refs/heads/master.tar.gz" \
             "package/small-package"
 
-          # ✅ Argon 主题
+          # Argon 主题
           rm -rf package/lean/luci-theme-argon 2>/dev/null || true
           gh_download \
             "https://github.com/jerrykuku/luci-theme-argon/archive/refs/heads/master.tar.gz" \
