@@ -87,10 +87,15 @@ jobs:
             "https://github.com/Openwrt-Passwall/openwrt-passwall-packages/archive/refs/heads/main.tar.gz" \
             "package/passwall-packages"
 
-          # AdGuardHome（small-package 合集仓库）
+          # AdGuardHome LuCI 界面（kenzok8/openwrt-packages）
           gh_download \
-            "https://github.com/kenzok8/small-package/archive/refs/heads/master.tar.gz" \
-            "package/small-package"
+            "https://github.com/kenzok8/openwrt-packages/archive/refs/heads/master.tar.gz" \
+            "package/kenzok8-packages"
+
+          # AdGuardHome 二进制依赖（kenzok8/small）
+          gh_download \
+            "https://github.com/kenzok8/small/archive/refs/heads/master.tar.gz" \
+            "package/kenzok8-small"
 
           # Argon 主题
           rm -rf package/lean/luci-theme-argon 2>/dev/null || true
