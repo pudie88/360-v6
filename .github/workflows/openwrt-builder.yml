@@ -21,9 +21,9 @@ jobs:
 
     steps:
       - name: 📦 Checkout
-        uses: actions/checkout@v4                          # ✅ v5 doesn't exist
+        uses: actions/checkout@v4
 
-      - name: 🗑️ Free Disk Space
+      - name: 🗑️ 释放磁盘空间
         run: |
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
           sudo docker rmi $(docker images -q) 2>/dev/null || true
@@ -31,104 +31,135 @@ jobs:
           sudo apt-get clean
           df -h
 
-      - name: 🛠️ Install Dependencies
+      - name: 🛠️ 安装编译依赖
         run: |
           sudo apt-get update
           sudo apt-get install -y \
             build-essential clang flex bison g++ gawk gcc-multilib g++-multilib \
             gettext git libncurses5-dev libssl-dev python3 python3-pip rsync \
-            swig unzip zlib1g-dev wget curl ca-certificates
+            swig unzip zlib1g-dev wget curl ca-certificates file
           sudo timedatectl set-timezone "$TZ"
 
-      - name: 📥 Clone OpenWrt Source
+      - name: 📥 克隆 OpenWrt 源码
         run: |
           git clone --depth 1 -b $REPO_BRANCH $REPO_URL openwrt
           cd openwrt
           echo "OPENWRT_COMMIT=$(git rev-parse HEAD)" >> $GITHUB_ENV
-          # ✅ Set build date here so it can be used in the release body
           echo "BUILD_DATE=$(date '+%Y-%m-%d')" >> $GITHUB_ENV
 
-      - name: 📦 Install Plugins (curl+tar method)
+      - name: 📦 安装第三方插件
+        env:
+          GIT_TERMINAL_PROMPT: "0"
         run: |
           cd openwrt
-          export GIT_TERMINAL_PROMPT=0
 
-          # PassWall
-          echo ">>> Installing PassWall..."
-          mkdir -p package/luci-app-passwall
-          curl -L -s https://github.com/xiaorouji/openwrt-passwall/archive/refs/heads/main.tar.gz | \
-            tar -xzf - -C package/luci-app-passwall --strip-components=1
+          # 通用下载函数：带 User-Agent + 下载后验证文件类型
+          gh_download() {
+            local url="$1"
+            local dest="$2"
+            local tmp
+            tmp=$(mktemp /tmp/pkg_XXXXXX.tar.gz)
 
-          # AdGuardHome — ✅ using active maintained fork (rufengsuixing is abandoned)
-          echo ">>> Installing AdGuardHome..."
-          mkdir -p package/luci-app-adguardhome
-          curl -L -s https://github.com/kenzok8/luci-app-adguardhome/archive/refs/heads/master.tar.gz | \
-            tar -xzf - -C package/luci-app-adguardhome --strip-components=1
+            echo ">>> 下载: $url"
+            curl -L -s \
+              --retry 3 \
+              --retry-delay 5 \
+              -H "User-Agent: Mozilla/5.0 (GitHub Actions OpenWrt Builder)" \
+              -o "$tmp" \
+              "$url"
 
-          # Argon Theme
-          echo ">>> Installing Argon theme..."
+            if ! file "$tmp" | grep -q "gzip compressed"; then
+              echo "❌ 下载失败，收到的不是 gzip 文件，实际内容："
+              head -5 "$tmp"
+              rm -f "$tmp"
+              return 1
+            fi
+
+            mkdir -p "$dest"
+            tar -xzf "$tmp" -C "$dest" --strip-components=1
+            rm -f "$tmp"
+            echo "✅ 安装完成: $dest"
+          }
+
+          # PassWall 本体
+          gh_download \
+            "https://github.com/xiaorouji/openwrt-passwall/archive/refs/heads/main.tar.gz" \
+            "package/luci-app-passwall"
+
+          # PassWall 依赖包（xray-core / sing-box 等，缺少会导致编译报错）
+          gh_download \
+            "https://github.com/xiaorouji/openwrt-passwall-packages/archive/refs/heads/main.tar.gz" \
+            "package/passwall-packages"
+
+          # AdGuardHome（kenzok8 fork，rufengsuixing 原仓库已停止维护）
+          gh_download \
+            "https://github.com/kenzok8/luci-app-adguardhome/archive/refs/heads/master.tar.gz" \
+            "package/luci-app-adguardhome"
+
+          # Argon 主题
           rm -rf package/lean/luci-theme-argon 2>/dev/null || true
-          mkdir -p package/luci-theme-argon
-          curl -L -s https://github.com/jerrykuku/luci-theme-argon/archive/refs/heads/master.tar.gz | \
-            tar -xzf - -C package/luci-theme-argon --strip-components=1
+          gh_download \
+            "https://github.com/jerrykuku/luci-theme-argon/archive/refs/heads/master.tar.gz" \
+            "package/luci-theme-argon"
 
-      - name: 🔄 Update Feeds
+      - name: 🔄 更新 Feeds
         run: |
           cd openwrt
           ./scripts/feeds update -a
           ./scripts/feeds install -a
 
-      - name: ⚙️ Configure Target
+      - name: ⚙️ 配置编译目标
         run: |
           cd openwrt
           cp $GITHUB_WORKSPACE/$CONFIG_FILE .config
-          # ✅ Run defconfig AFTER feeds install so all package symbols are resolved
+          # 必须在 feeds install 之后执行，确保所有包符号都被正确解析
           make defconfig
-          echo "=== Target Config ==="
-          grep "CONFIG_TARGET.*360\|CONFIG_TARGET_qualcommax" .config || echo "⚠️ No matching target config found"
+          echo "=== 目标配置验证 ==="
+          grep "CONFIG_TARGET_qualcommax" .config || echo "⚠️ 未找到 qualcommax 目标配置"
+          grep "CONFIG_TARGET_qualcommax_ipq60xx_DEVICE_qihoo_360v6" .config || echo "⚠️ 未找到 360V6 设备配置"
 
-      - name: ⬇️ Download Packages
+      - name: ⬇️ 下载编译所需软件包
         run: |
           cd openwrt
           make download -j$(nproc)
-          # Remove incomplete downloads (< 1 KB)
+          # 删除下载不完整的文件（小于 1KB）
           find dl -size -1024c -exec rm -f {} \;
 
-      - name: 🔨 Compile Firmware
+      - name: 🔨 编译固件
         id: compile
         run: |
           cd openwrt
-          echo "🔨 Starting compilation with $(nproc) threads..."
+          echo "🔨 开始编译，使用 $(nproc) 线程..."
           make -j$(nproc) V=s 2>&1 | tee build.log
 
           if [ ${PIPESTATUS[0]} -eq 0 ]; then
             echo "status=success" >> $GITHUB_OUTPUT
-            echo "✅ Compilation successful!"
+            echo "✅ 编译成功！"
           else
             echo "status=failure" >> $GITHUB_OUTPUT
-            echo "❌ Compilation failed — last 100 lines:"
+            echo "❌ 编译失败，最后 100 行日志："
             tail -100 build.log
             exit 1
           fi
 
-      - name: 📦 Prepare Firmware
+      - name: 📦 整理固件文件
         if: steps.compile.outputs.status == 'success'
         run: |
           cd openwrt/bin/targets/*/*
           rm -rf packages
           echo "FIRMWARE_PATH=$PWD" >> $GITHUB_ENV
-          echo "=== Firmware Files ==="
-          ls -lh *.bin 2>/dev/null || echo "⚠️ No .bin files found"
+          echo "=== 固件文件列表 ==="
+          ls -lh *.bin 2>/dev/null || echo "⚠️ 未找到 .bin 文件"
 
-      - name: 📤 Upload to Artifacts
+      - name: 📤 上传固件到 Artifacts
         if: steps.compile.outputs.status == 'success'
-        uses: actions/upload-artifact@v4                  # ✅ v5 doesn't exist
+        uses: actions/upload-artifact@v4
         with:
           name: OpenWrt-360V6-${{ github.run_number }}
           path: ${{ env.FIRMWARE_PATH }}/*.bin
           retention-days: 7
 
-      - name: 🚀 Upload to Release
+      - name: 🚀 发布到 Release
         if: steps.compile.outputs.status == 'success'
         uses: softprops/action-gh-release@v2
         with:
@@ -136,18 +167,24 @@ jobs:
           files: ${{ env.FIRMWARE_PATH }}/*squashfs*.bin
           body: |
             ## OpenWrt for 360 V6 (Qualcomm IPQ60xx)
-            - Branch: ${{ env.REPO_BRANCH }}
-            - Commit: ${{ env.OPENWRT_COMMIT }}
-            - Build: ${{ github.run_number }}
-            - Date: ${{ env.BUILD_DATE }}
+            - 分支: ${{ env.REPO_BRANCH }}
+            - 源码 Commit: ${{ env.OPENWRT_COMMIT }}
+            - 构建编号: ${{ github.run_number }}
+            - 构建日期: ${{ env.BUILD_DATE }}
+            
+            ### 内置插件
+            - PassWall（科学上网）
+            - AdGuardHome（广告过滤）
+            - ttyd（网页终端）
+            - Argon 主题
           draft: false
           prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: 📋 Upload Build Log (Always)
+      - name: 📋 上传编译日志（始终执行）
         if: always()
-        uses: actions/upload-artifact@v4                  # ✅ v5 doesn't exist
+        uses: actions/upload-artifact@v4
         with:
           name: build-log-${{ github.run_number }}
           path: openwrt/build.log
