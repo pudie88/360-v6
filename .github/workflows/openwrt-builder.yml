@@ -1,4 +1,4 @@
-name: Build OpenWrt for 360 V6 (Fixed)
+name: Build OpenWrt for 360 V6
 
 on:
   workflow_dispatch:
@@ -6,12 +6,9 @@ on:
     branches: [ main, master ]
     paths:
       - 'configs/**'
-      - '.github/workflows/build-360v6-fixed.yml'
+      - '.github/workflows/openwrt-builder.yml'
 
 env:
-  # ✅ 解决 Node.js 20 弃用警告
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-  
   REPO_URL: https://github.com/openwrt/openwrt
   REPO_BRANCH: openwrt-23.05
   CONFIG_FILE: configs/Qihoo-V6.config
@@ -21,10 +18,10 @@ jobs:
   build:
     runs-on: ubuntu-22.04
     timeout-minutes: 360
-    
+
     steps:
       - name: 📦 Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v4                          # ✅ v5 doesn't exist
 
       - name: 🗑️ Free Disk Space
         run: |
@@ -47,45 +44,27 @@ jobs:
         run: |
           git clone --depth 1 -b $REPO_BRANCH $REPO_URL openwrt
           cd openwrt
-          echo "COMMIT=$(git rev-parse HEAD)" >> $GITHUB_ENV
-
-      - name: ⚙️ Configure Target
-        run: |
-          cd openwrt
-          cp $GITHUB_WORKSPACE/$CONFIG_FILE .config
-          make defconfig
-          echo "=== Target Config ==="
-          grep "CONFIG_TARGET.*360" .config || echo "⚠️ No 360 config found"
-
-      - name: 🔄 Update Feeds
-        run: |
-          cd openwrt
-          ./scripts/feeds update -a
-          ./scripts/feeds install -a
+          echo "OPENWRT_COMMIT=$(git rev-parse HEAD)" >> $GITHUB_ENV
+          # ✅ Set build date here so it can be used in the release body
+          echo "BUILD_DATE=$(date '+%Y-%m-%d')" >> $GITHUB_ENV
 
       - name: 📦 Install Plugins (curl+tar method)
         run: |
           cd openwrt
-          
-          # ✅ 关键：使用 curl+tar 避免 git 认证问题
           export GIT_TERMINAL_PROMPT=0
-          
+
           # PassWall
-          if grep -q "CONFIG_PACKAGE_luci-app-passwall=y" .config; then
-            echo ">>> Installing PassWall via curl..."
-            mkdir -p package/luci-app-passwall
-            curl -L -s https://github.com/xiaorouji/openwrt-passwall/archive/refs/heads/main.tar.gz | \
-              tar -xzf - -C package/luci-app-passwall --strip-components=1
-          fi
-          
-          # AdGuardHome
-          if grep -q "CONFIG_PACKAGE_luci-app-adguardhome=y" .config; then
-            echo ">>> Installing AdGuardHome via curl..."
-            mkdir -p package/luci-app-adguardhome
-            curl -L -s https://github.com/rufengsuixing/luci-app-adguardhome/archive/refs/heads/master.tar.gz | \
-              tar -xzf - -C package/luci-app-adguardhome --strip-components=1
-          fi
-          
+          echo ">>> Installing PassWall..."
+          mkdir -p package/luci-app-passwall
+          curl -L -s https://github.com/xiaorouji/openwrt-passwall/archive/refs/heads/main.tar.gz | \
+            tar -xzf - -C package/luci-app-passwall --strip-components=1
+
+          # AdGuardHome — ✅ using active maintained fork (rufengsuixing is abandoned)
+          echo ">>> Installing AdGuardHome..."
+          mkdir -p package/luci-app-adguardhome
+          curl -L -s https://github.com/kenzok8/luci-app-adguardhome/archive/refs/heads/master.tar.gz | \
+            tar -xzf - -C package/luci-app-adguardhome --strip-components=1
+
           # Argon Theme
           echo ">>> Installing Argon theme..."
           rm -rf package/lean/luci-theme-argon 2>/dev/null || true
@@ -93,10 +72,26 @@ jobs:
           curl -L -s https://github.com/jerrykuku/luci-theme-argon/archive/refs/heads/master.tar.gz | \
             tar -xzf - -C package/luci-theme-argon --strip-components=1
 
+      - name: 🔄 Update Feeds
+        run: |
+          cd openwrt
+          ./scripts/feeds update -a
+          ./scripts/feeds install -a
+
+      - name: ⚙️ Configure Target
+        run: |
+          cd openwrt
+          cp $GITHUB_WORKSPACE/$CONFIG_FILE .config
+          # ✅ Run defconfig AFTER feeds install so all package symbols are resolved
+          make defconfig
+          echo "=== Target Config ==="
+          grep "CONFIG_TARGET.*360\|CONFIG_TARGET_qualcommax" .config || echo "⚠️ No matching target config found"
+
       - name: ⬇️ Download Packages
         run: |
           cd openwrt
           make download -j$(nproc)
+          # Remove incomplete downloads (< 1 KB)
           find dl -size -1024c -exec rm -f {} \;
 
       - name: 🔨 Compile Firmware
@@ -104,16 +99,14 @@ jobs:
         run: |
           cd openwrt
           echo "🔨 Starting compilation with $(nproc) threads..."
-          
-          # 编译并实时输出日志
           make -j$(nproc) V=s 2>&1 | tee build.log
-          
+
           if [ ${PIPESTATUS[0]} -eq 0 ]; then
             echo "status=success" >> $GITHUB_OUTPUT
             echo "✅ Compilation successful!"
           else
-            echo "❌ Compilation failed!"
-            echo "=== Last 100 lines of build.log ==="
+            echo "status=failure" >> $GITHUB_OUTPUT
+            echo "❌ Compilation failed — last 100 lines:"
             tail -100 build.log
             exit 1
           fi
@@ -129,7 +122,7 @@ jobs:
 
       - name: 📤 Upload to Artifacts
         if: steps.compile.outputs.status == 'success'
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v4                  # ✅ v5 doesn't exist
         with:
           name: OpenWrt-360V6-${{ github.run_number }}
           path: ${{ env.FIRMWARE_PATH }}/*.bin
@@ -144,8 +137,9 @@ jobs:
           body: |
             ## OpenWrt for 360 V6 (Qualcomm IPQ60xx)
             - Branch: ${{ env.REPO_BRANCH }}
+            - Commit: ${{ env.OPENWRT_COMMIT }}
             - Build: ${{ github.run_number }}
-            - Date: $(date '+%Y-%m-%d')
+            - Date: ${{ env.BUILD_DATE }}
           draft: false
           prerelease: false
         env:
@@ -153,7 +147,7 @@ jobs:
 
       - name: 📋 Upload Build Log (Always)
         if: always()
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v4                  # ✅ v5 doesn't exist
         with:
           name: build-log-${{ github.run_number }}
           path: openwrt/build.log
