@@ -88,8 +88,8 @@ jobs:
 
           # ✅ AdGuardHome
           gh_download \
-            "https://github.com/kenzok8/luci-app-adguardhome/archive/refs/heads/master.tar.gz" \
-            "package/luci-app-adguardhome"
+            "https://github.com/kenzok8/small-package/archive/refs/heads/master.tar.gz" \
+            "package/small-package"
 
           # ✅ Argon 主题
           rm -rf package/lean/luci-theme-argon 2>/dev/null || true
