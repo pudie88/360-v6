@@ -5,13 +5,11 @@ on:
   push:
     branches: [ main, master ]
     paths:
-      - 'configs/**'
       - '.github/workflows/openwrt-builder.yml'
 
 env:
   REPO_URL: https://github.com/openwrt/openwrt
   REPO_BRANCH: openwrt-23.05
-  CONFIG_FILE: .config
   TZ: Asia/Shanghai
 
 jobs:
@@ -77,26 +75,23 @@ jobs:
             echo "✅ 安装完成: $dest"
           }
 
-          # PassWall 本体
           gh_download \
             "https://github.com/Openwrt-Passwall/openwrt-passwall/archive/refs/heads/main.tar.gz" \
             "package/luci-app-passwall"
 
-          # PassWall 依赖包
           gh_download \
             "https://github.com/Openwrt-Passwall/openwrt-passwall-packages/archive/refs/heads/main.tar.gz" \
             "package/passwall-packages"
 
-          # Argon 主题
           rm -rf package/lean/luci-theme-argon 2>/dev/null || true
           gh_download \
             "https://github.com/jerrykuku/luci-theme-argon/archive/refs/heads/master.tar.gz" \
             "package/luci-theme-argon"
 
-          # kenzok8 包（用于主题等，暂时保留但不编译 adguardhome）
           gh_download \
             "https://github.com/kenzok8/openwrt-packages/archive/refs/heads/master.tar.gz" \
             "package/kenzok8-packages"
+
       - name: 🔄 更新 Feeds
         run: |
           cd openwrt
@@ -106,59 +101,46 @@ jobs:
       - name: ⚙️ 配置编译目标
         run: |
           cd openwrt
-
-          cat > .config << 'EOF'
-CONFIG_TARGET_qualcommax=y
-CONFIG_TARGET_qualcommax_ipq60xx=y
-CONFIG_TARGET_qualcommax_ipq60xx_DEVICE_qihoo_360v6=y
-CONFIG_TARGET_ROOTFS_PARTSIZE=100
-CONFIG_CCACHE=y
-CONFIG_SSTRIP=y
-CONFIG_TARGET_ROOTFS_SQUASHFS=y
-CONFIG_PACKAGE_luci=y
-CONFIG_PACKAGE_luci-base=y
-CONFIG_PACKAGE_luci-compat=y
-CONFIG_PACKAGE_luci-lib-ipkg=y
-CONFIG_PACKAGE_luci-ssl=y
-CONFIG_PACKAGE_luci-theme-bootstrap=y
-CONFIG_PACKAGE_luci-i18n-base-zh-cn=y
-CONFIG_PACKAGE_dnsmasq-full=y
-# CONFIG_PACKAGE_dnsmasq is not set
-CONFIG_PACKAGE_firewall4=y
-CONFIG_PACKAGE_nftables=y
-CONFIG_PACKAGE_kmod-nft-offload=y
-CONFIG_PACKAGE_opkg=y
-CONFIG_PACKAGE_kmod-ath11k=y
-CONFIG_PACKAGE_kmod-ath10k-ct=y
-CONFIG_PACKAGE_ath11k-firmware-qcn9074=y
-CONFIG_PACKAGE_luci-app-passwall=y
-CONFIG_PACKAGE_luci-app-ttyd=y
-CONFIG_PACKAGE_curl=y
-CONFIG_PACKAGE_wget-ssl=y
-CONFIG_PACKAGE_htop=y
-CONFIG_PACKAGE_bash=y
-CONFIG_PACKAGE_file=y
-# CONFIG_PACKAGE_luci-app-adguardhome is not set
-# CONFIG_PACKAGE_luci-app-openclash is not set
-# CONFIG_PACKAGE_luci-app-mosdns is not set
-# CONFIG_PACKAGE_v2ray-geoip is not set
-# CONFIG_PACKAGE_v2ray-geosite is not set
-# CONFIG_PACKAGE_docker is not set
-EOF
-
-          make defconfig
-
-          echo "=== 目标配置验证 ==="
-          grep "CONFIG_TARGET_qualcommax" .config || echo "⚠️ 未找到 qualcommax 目标配置"
-          grep "CONFIG_TARGET_qualcommax_ipq60xx_DEVICE_qihoo_360v6" .config || echo "⚠️ 未找到 360V6 设备配置"
+          {
+            echo "CONFIG_TARGET_qualcommax=y"
+            echo "CONFIG_TARGET_qualcommax_ipq60xx=y"
+            echo "CONFIG_TARGET_qualcommax_ipq60xx_DEVICE_qihoo_360v6=y"
+            echo "CONFIG_TARGET_ROOTFS_PARTSIZE=100"
+            echo "CONFIG_CCACHE=y"
+            echo "CONFIG_SSTRIP=y"
+            echo "CONFIG_TARGET_ROOTFS_SQUASHFS=y"
+            echo "CONFIG_PACKAGE_luci=y"
+            echo "CONFIG_PACKAGE_luci-base=y"
+            echo "CONFIG_PACKAGE_luci-compat=y"
+            echo "CONFIG_PACKAGE_luci-lib-ipkg=y"
+            echo "CONFIG_PACKAGE_luci-ssl=y"
+            echo "CONFIG_PACKAGE_luci-theme-bootstrap=y"
+            echo "CONFIG_PACKAGE_luci-i18n-base-zh-cn=y"
+            echo "CONFIG_PACKAGE_dnsmasq-full=y"
+            echo "# CONFIG_PACKAGE_dnsmasq is not set"
+            echo "CONFIG_PACKAGE_firewall4=y"
+            echo "CONFIG_PACKAGE_nftables=y"
+            echo "CONFIG_PACKAGE_kmod-nft-offload=y"
+            echo "CONFIG_PACKAGE_opkg=y"
+            echo "CONFIG_PACKAGE_kmod-ath11k=y"
+            echo "CONFIG_PACKAGE_kmod-ath10k-ct=y"
+            echo "CONFIG_PACKAGE_ath11k-firmware-qcn9074=y"
+            echo "CONFIG_PACKAGE_luci-app-passwall=y"
+            echo "CONFIG_PACKAGE_luci-app-ttyd=y"
+            echo "CONFIG_PACKAGE_curl=y"
+            echo "CONFIG_PACKAGE_wget-ssl=y"
+            echo "CONFIG_PACKAGE_htop=y"
+            echo "CONFIG_PACKAGE_bash=y"
+            echo "CONFIG_PACKAGE_file=y"
+            echo "# CONFIG_PACKAGE_luci-app-adguardhome is not set"
+            echo "# CONFIG_PACKAGE_luci-app-openclash is not set"
+            echo "# CONFIG_PACKAGE_luci-app-mosdns is not set"
+            echo "# CONFIG_PACKAGE_v2ray-geoip is not set"
+            echo "# CONFIG_PACKAGE_v2ray-geosite is not set"
+            echo "# CONFIG_PACKAGE_docker is not set"
+          } > .config
 
           make defconfig
-
-          # defconfig 之后强制恢复目标，防止被覆盖
-          sed -i 's/^CONFIG_TARGET_.*//' .config
-          echo "CONFIG_TARGET_qualcommax=y" >> .config
-          echo "CONFIG_TARGET_qualcommax_ipq60xx=y" >> .config
-          echo "CONFIG_TARGET_qualcommax_ipq60xx_DEVICE_qihoo_360v6=y" >> .config
 
           echo "=== 目标配置验证 ==="
           grep "CONFIG_TARGET_qualcommax" .config || echo "⚠️ 未找到 qualcommax 目标配置"
@@ -174,10 +156,8 @@ EOF
         id: compile
         run: |
           cd openwrt
-          echo "🔨 开始编译..."
-
-          # 先单线程编译，报错信息更清晰
-          make -j1 V=s 2>&1 | tee build.log
+          echo "🔨 开始编译，使用 $(nproc) 线程..."
+          make -j$(nproc) V=s 2>&1 | tee build.log
 
           if [ ${PIPESTATUS[0]} -eq 0 ]; then
             echo "status=success" >> $GITHUB_OUTPUT
@@ -221,7 +201,6 @@ EOF
 
             ### 内置插件
             - PassWall（科学上网）
-            - AdGuardHome（广告过滤）
             - ttyd（网页终端）
             - Argon 主题
           draft: false
