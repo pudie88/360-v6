@@ -1,34 +1,25 @@
 #!/bin/bash
 set -e
-
 cd "$GITHUB_WORKSPACE/openwrt"
 
-echo ">>> 克隆 PassWall"
-if [ ! -d "package/luci-app-passwall" ]; then
-    git clone --depth 1 \
-        https://github.com/xiaorouji/openwrt-passwall \
-        package/luci-app-passwall
-fi
+echo ">>> Installing PassWall"
+[ ! -d "package/luci-app-passwall" ] && \
+  mkdir -p package/luci-app-passwall && \
+  curl -L -s https://github.com/xiaorouji/openwrt-passwall/archive/refs/heads/main.tar.gz | \
+    tar -xzf - -C package/luci-app-passwall --strip-components=1
 
-echo ">>> 克隆 AdGuardHome"
-if [ ! -d "package/luci-app-adguardhome" ]; then
-    git clone --depth 1 \
-        https://github.com/rufengsuixing/luci-app-adguardhome \
-        package/luci-app-adguardhome
-fi
+# ✅ kenzok8 fork — rufengsuixing is abandoned
+echo ">>> Installing AdGuardHome"
+[ ! -d "package/luci-app-adguardhome" ] && \
+  mkdir -p package/luci-app-adguardhome && \
+  curl -L -s https://github.com/kenzok8/luci-app-adguardhome/archive/refs/heads/master.tar.gz | \
+    tar -xzf - -C package/luci-app-adguardhome --strip-components=1
 
-echo ">>> 克隆 Argon 主题"
+echo ">>> Installing Argon theme"
 rm -rf package/lean/luci-theme-argon 2>/dev/null || true
-if [ ! -d "package/luci-theme-argon" ]; then
-    git clone --depth 1 -b master \
-        https://github.com/jerrykuku/luci-theme-argon \
-        package/luci-theme-argon
-fi
+[ ! -d "package/luci-theme-argon" ] && \
+  mkdir -p package/luci-theme-argon && \
+  curl -L -s https://github.com/jerrykuku/luci-theme-argon/archive/refs/heads/master.tar.gz | \
+    tar -xzf - -C package/luci-theme-argon --strip-components=1
 
-# ⚠️ 移除 MosDNS（高通版本可能兼容性差）
-# echo ">>> 克隆 MosDNS"  # 已注释
-
-# ⚠️ 移除 OpenClash（体积大 + 与 PassWall 冲突）
-# echo ">>> 克隆 OpenClash"  # 已注释
-
-echo ">>> DIY 脚本执行完成"
+echo ">>> DIY script complete"
