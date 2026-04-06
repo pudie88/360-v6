@@ -23,10 +23,19 @@ jobs:
 
       - name: 🗑️ 释放磁盘空间
         run: |
-          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /usr/local/lib/android
+          sudo rm -rf /opt/ghc
+          sudo rm -rf /opt/hostedtoolcache/CodeQL
+          sudo rm -rf /usr/local/share/boost
+          sudo rm -rf /usr/share/swift
+          sudo rm -rf /usr/local/.ghcup
+          sudo rm -rf /usr/lib/jvm
           sudo docker rmi $(docker images -q) 2>/dev/null || true
           sudo apt-get autoremove -y --purge
           sudo apt-get clean
+          sudo swapoff -a
+          sudo rm -f /swapfile /mnt/swapfile
           df -h
 
       - name: 🛠️ 安装编译依赖
@@ -135,6 +144,11 @@ jobs:
             echo "# CONFIG_PACKAGE_v2ray-geoip is not set"
             echo "# CONFIG_PACKAGE_v2ray-geosite is not set"
             echo "# CONFIG_PACKAGE_docker is not set"
+            echo "# CONFIG_PACKAGE_xray-core is not set"
+            echo "# CONFIG_PACKAGE_sing-box is not set"
+            echo "# CONFIG_PACKAGE_hysteria is not set"
+            echo "# CONFIG_PACKAGE_naiveproxy is not set"
+            echo "# CONFIG_PACKAGE_tuic-client is not set"
           } > .config
 
           echo "=== 第一次 defconfig 前验证 ==="
