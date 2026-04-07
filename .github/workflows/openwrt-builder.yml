@@ -86,14 +86,6 @@ jobs:
             echo "✅ 安装完成: $dest"
           }
 
-          gh_download \
-            "https://github.com/Openwrt-Passwall/openwrt-passwall/archive/refs/heads/main.tar.gz" \
-            "package/luci-app-passwall"
-
-          gh_download \
-            "https://github.com/Openwrt-Passwall/openwrt-passwall-packages/archive/refs/heads/main.tar.gz" \
-            "package/passwall-packages"
-
           rm -rf package/lean/luci-theme-argon 2>/dev/null || true
           gh_download \
             "https://github.com/jerrykuku/luci-theme-argon/archive/refs/heads/master.tar.gz" \
@@ -133,7 +125,8 @@ jobs:
             echo "CONFIG_PACKAGE_kmod-ath11k=y"
             echo "CONFIG_PACKAGE_kmod-ath10k-ct=y"
             echo "CONFIG_PACKAGE_ath11k-firmware-qcn9074=y"
-            echo "CONFIG_PACKAGE_luci-app-passwall=y"
+            echo "# CONFIG_PACKAGE_luci-app-passwall is not set"
+            echo "CONFIG_PACKAGE_luci-app-homeproxy=y"
             echo "CONFIG_PACKAGE_luci-app-ttyd=y"
             echo "CONFIG_PACKAGE_curl=y"
             echo "CONFIG_PACKAGE_wget-ssl=y"
@@ -151,6 +144,11 @@ jobs:
             echo "# CONFIG_PACKAGE_hysteria is not set"
             echo "# CONFIG_PACKAGE_naiveproxy is not set"
             echo "# CONFIG_PACKAGE_tuic-client is not set"
+            echo "CONFIG_PACKAGE_luci-i18n-base-zh-cn=y"
+            echo "CONFIG_PACKAGE_luci-i18n-homeproxy-zh-cn=y"
+            echo "CONFIG_PACKAGE_luci-i18n-ttyd-zh-cn=y"
+            echo "CONFIG_PACKAGE_luci-i18n-firewall-zh-cn=y"
+            echo "CONFIG_PACKAGE_luci-i18n-opkg-zh-cn=y"
           } > .config
 
           echo "=== 第一次 defconfig 前验证 ==="
@@ -237,7 +235,7 @@ jobs:
             - 构建日期: ${{ env.BUILD_DATE }}
 
             ### 内置插件
-            - PassWall（科学上网）
+            - homeproxy（科学上网）
             - ttyd（网页终端）
             - Argon 主题
           draft: false
