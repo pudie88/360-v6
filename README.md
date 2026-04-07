@@ -1,39 +1,72 @@
-**English** | [中文](https://p3terx.com/archives/build-openwrt-with-github-actions.html)
+# OpenWrt 自动编译 — 360 V6
 
-# Actions-OpenWrt
+基于 GitHub Actions 自动编译适配 360 V6 路由器的 OpenWrt 固件。
 
-[![LICENSE](https://img.shields.io/github/license/mashape/apistatus.svg?style=flat-square&label=LICENSE)](https://github.com/P3TERX/Actions-OpenWrt/blob/master/LICENSE)
-![GitHub Stars](https://img.shields.io/github/stars/P3TERX/Actions-OpenWrt.svg?style=flat-square&label=Stars&logo=github)
-![GitHub Forks](https://img.shields.io/github/forks/P3TERX/Actions-OpenWrt.svg?style=flat-square&label=Forks&logo=github)
+## 设备信息
 
-A template for building OpenWrt with GitHub Actions
+| 项目 | 参数 |
+|------|------|
+| 设备 | 360 V6 全屋路由 |
+| 芯片 | Qualcomm IPQ6000（四核 A53 1.2GHz）|
+| 内存 | 512MB |
+| 闪存 | 128MB NAND |
+| 无线 | Wi-Fi 6 双频 AX1800 |
+| 接口 | 4 × 千兆 LAN/WAN + 1 × USB 2.0 |
+| OpenWrt Target | qualcommax / ipq60xx |
 
-## Usage
+## 内置功能
 
-- Click the [Use this template](https://github.com/P3TERX/Actions-OpenWrt/generate) button to create a new repository.
-- Generate `.config` files using [Lean's OpenWrt](https://github.com/coolsnowwolf/lede) source code. ( You can change it through environment variables in the workflow file. )
-- Push `.config` file to the GitHub repository.
-- Select `Build OpenWrt` on the Actions page.
-- Click the `Run workflow` button.
-- When the build is complete, click the `Artifacts` button in the upper right corner of the Actions page to download the binaries.
+- **HomeProxy** — 代理工具（基于 sing-box）
+- **ttyd** — 网页终端
+- **Argon** — 现代化主题
+- **中文界面** — 全中文 LuCI
 
-## Tips
+## 固件下载
 
-- It may take a long time to create a `.config` file and build the OpenWrt firmware. Thus, before create repository to build your own firmware, you may check out if others have already built it which meet your needs by simply [search `Actions-Openwrt` in GitHub](https://github.com/search?q=Actions-openwrt).
-- Add some meta info of your built firmware (such as firmware architecture and installed packages) to your repository introduction, this will save others' time.
+前往 [Releases](../../releases) 页面下载最新固件。
 
-## Credits
+| 文件 | 用途 |
+|------|------|
+| `*-squashfs-factory.ubi` | 全新刷入（通过 uboot）|
+| `*-initramfs-uImage.itb` | 内存启动测试用，重启后消失 |
 
-- [Microsoft Azure](https://azure.microsoft.com)
-- [GitHub Actions](https://github.com/features/actions)
-- [OpenWrt](https://github.com/openwrt/openwrt)
-- [coolsnowwolf/lede](https://github.com/coolsnowwolf/lede)
-- [Mikubill/transfer](https://github.com/Mikubill/transfer)
-- [softprops/action-gh-release](https://github.com/softprops/action-gh-release)
-- [Mattraks/delete-workflow-runs](https://github.com/Mattraks/delete-workflow-runs)
-- [dev-drprasad/delete-older-releases](https://github.com/dev-drprasad/delete-older-releases)
-- [peter-evans/repository-dispatch](https://github.com/peter-evans/repository-dispatch)
+## 刷机方法
 
-## License
+### 从原厂固件刷入
 
-[MIT](https://github.com/P3TERX/Actions-OpenWrt/blob/main/LICENSE) © [**P3TERX**](https://p3terx.com)
+1. 用网线连接路由器任意 LAN 口
+2. 按住 Reset 键同时上电，等红灯亮起后松开，进入 uboot
+3. 电脑网卡设置静态 IP：`192.168.1.10`，网关：`192.168.1.1`
+4. 浏览器打开 `192.168.1.1` 进入 uboot 页面
+5. 选择 `factory.ubi` 文件上传刷入
+6. 等待重启完成
+
+### 从 OpenWrt 升级
+
+```bash
+sysupgrade -v /tmp/openwrt-*-sysupgrade.tar
+```
+
+## 首次登录
+
+| 项目 | 默认值 |
+|------|--------|
+| 管理地址 | http://192.168.1.1 |
+| 用户名 | root |
+| 密码 | 无（直接回车）|
+
+## 编译说明
+
+本仓库使用 GitHub Actions 自动编译，基于 OpenWrt `main` 分支（snapshot）。
+
+手动触发编译：Actions → Build OpenWrt for 360 V6 → Run workflow
+
+每次 push 修改 `.github/workflows/openwrt-builder.yml` 也会自动触发编译。
+
+编译时间约 3～4 小时。
+
+## 注意事项
+
+- 固件基于 snapshot 分支，功能最新但稳定性不如正式版
+- 刷机有风险，请确认文件正确后再操作
+- 如遇问题可通过 uboot 重新刷入恢复
