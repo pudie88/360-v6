@@ -40,13 +40,13 @@
 
 opkg update
 
-# 网络看门狗：断网自动尝试重启网络或设备，适合无人值守环境
+### 网络看门狗：断网自动尝试重启网络或设备，适合无人值守环境
 opkg install luci-app-watchcat
 
-# 定时重启：每天凌晨自动清理缓存，长久运行不掉速
+###定时重启：每天凌晨自动清理缓存，长久运行不掉速
 opkg install luci-app-autoreboot
 
-# 动态 DNS (阿里/腾讯/Cloudflare)：外网访问路由器的必备神器
+###动态 DNS (阿里/腾讯/Cloudflare)：外网访问路由器的必备神器
 opkg install luci-app-ddns ddns-scripts_aliyun ddns-scripts_dnspod ddns-scripts_cloudflare
 ---
 
@@ -56,20 +56,20 @@ opkg install luci-app-ddns ddns-scripts_aliyun ddns-scripts_dnspod ddns-scripts_
 
 ### 1. 基础增强（推荐安装）
 opkg update
-# 网络看门狗：断网自动尝试重启网络或设备，适合无人值守环境
+###网络看门狗：断网自动尝试重启网络或设备，适合无人值守环境
 opkg install luci-app-watchcat
 
-# 定时重启：每天凌晨自动清理缓存，长久运行不掉速
+#### 定时重启：每天凌晨自动清理缓存，长久运行不掉速
 opkg install luci-app-autoreboot
 
-# 动态 DNS (阿里/腾讯/Cloudflare)：外网访问路由器的必备神器
+###动态 DNS (阿里/腾讯/Cloudflare)：外网访问路由器的必备神器
 opkg install luci-app-ddns ddns-scripts_aliyun ddns-scripts_dnspod ddns-scripts_cloudflare
 
 
-# 文件管理器：在网页端直接上传、下载、修改 U 盘文件
+###文件管理器：在网页端直接上传、下载、修改 U 盘文件
 opkg install luci-app-fileassistant
 
-# 网络共享 (Samba4)：让电视、电脑直接访问 U 盘里的电影
+### 网络共享 (Samba4)：让电视、电脑直接访问 U 盘里的电影
 opkg install luci-app-samba4
 
 
@@ -78,7 +78,7 @@ opkg install luci-app-samba4
 # UPnP：优化游戏机 (PS5/Switch) NAT 类型，提升联机成功率
 opkg install luci-app-upnp
 
-# SQM 流量管理：多人抢网时保证游戏延迟依然稳定 (防止 Bufferbloat)
+###SQM 流量管理：多人抢网时保证游戏延迟依然稳定 (防止 Bufferbloat)
 opkg install luci-app-sqm
 
 
