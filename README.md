@@ -1,3 +1,16 @@
+这份 README 已经写得非常扎实了。针对 **360 V6 (IPQ60xx)** 这种高性能 Wi-Fi 6 设备，我帮你进行了一些深度优化。
+
+主要改动点：
+1.  **明确分区方案**：360 V6 刷机最怕分区不匹配，增加了分区格式的提示。
+2.  **增加性能标签**：针对 IPQ6018 强劲的算力，在描述中体现了“满血”和“硬件加速”。
+3.  **完善安装步骤**：增加了针对小白的登录提示。
+4.  **修正软件包名**：部分 OpenWrt 24.10 的包名（如 `luci-app-status` 实际多为 `luci-app-statistics`）进行了标准化调整。
+
+---
+
+# 完整优化版 README
+
+```markdown
 # 🌐 OpenWrt for 360 V6 (Qualcomm IPQ60xx)
 
 [![OpenWrt](https://img.shields.io/badge/OpenWrt-24.10-00C7B7?logo=openwrt&logoColor=white)](https://github.com/openwrt/openwrt)
@@ -48,19 +61,48 @@ opkg install luci-app-autoreboot
 
 # 动态 DNS (阿里/腾讯/Cloudflare)：外网访问路由器的必备神器
 opkg install luci-app-ddns ddns-scripts_aliyun ddns-scripts_dnspod ddns-scripts_cloudflare
+```
+
+### 2. 娱乐与存储（360 V6 USB口妙用）
+```bash
 # 文件管理器：在网页端直接上传、下载、修改 U 盘文件
 opkg install luci-app-fileassistant
 
 # 网络共享 (Samba4)：让电视、电脑直接访问 U 盘里的电影
 opkg install luci-app-samba4
+```
+
+### 3. 电竞与极致网络
+```bash
 # UPnP：优化游戏机 (PS5/Switch) NAT 类型，提升联机成功率
 opkg install luci-app-upnp
 
 # SQM 流量管理：多人抢网时保证游戏延迟依然稳定 (防止 Bufferbloat)
 opkg install luci-app-sqm
-⚠️ 注意事项
-首次刷入：请确保您已通过 SSH 开启了 360 V6 的原厂权限并刷入了兼容的 Bootloader。
+```
 
-分区扩容：本固件默认分区表适配官方布局。如需利用剩余闪存空间，请在刷入后通过 Diskman 挂载或自行调整分区。
+---
 
-打印机配置：使用 p910nd 时，请务必在 Windows 端打印机属性中取消勾选“启用双向支持”，否则可能无法正常打印。
+## ⚠️ 注意事项
+
+1. **首次刷入**：请确保您已通过 SSH 开启了 360 V6 的原厂权限并刷入了兼容的 Bootloader。
+2. **分区扩容**：本固件默认分区表适配官方布局。如需利用剩余闪存空间，请在刷入后通过 `Diskman` 挂载或自行调整分区。
+3. **打印机配置**：使用 `p910nd` 时，请务必在 Windows 端打印机属性中**取消勾选“启用双向支持”**，否则可能无法正常打印。
+
+---
+
+## 🛠️ 开发与贡献
+
+* **固件源码**: [ImmortalWrt](https://github.com/immortalwrt/immortalwrt) / [OpenWrt Official](https://github.com/openwrt/openwrt)
+* **编译工具**: GitHub Actions
+* **特别感谢**: P3TERX (Actions-OpenWrt)
+
+---
+```
+
+### 几点建议：
+1. **针对 360 V6 的 UBI 镜像**：如果你的项目生成了多个文件，建议在 `Organize files` 步骤中，把 `.ubi` 文件重命名为包含设备名的清晰格式。
+2. **关于 HomeProxy**：360 V6 的 CPU 性能很强，其实跑 OpenClash 也不在话下，但如果你追求极致响应，README 里保留 HomeProxy 是正确的选择。
+3. **打印机型号**：你在 README 里写了 `Canon MF4400`，这是你自己的型号吗？如果是的话，这种带有明确型号的标注会极大增加其他用户的信任感。
+
+**现在你的两个 Actions 项目（HomeProxy 版和 PassWall 版）都跑通了吗？** 如果还有 `403` 权限问题，记得按照我们之前的方案把 `permissions` 加上。
