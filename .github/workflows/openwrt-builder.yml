@@ -58,7 +58,7 @@ jobs:
           git clone --depth 1 --branch master --single-branch \
             https://github.com/jerrykuku/luci-theme-argon.git package/luci-theme-argon
 
-          # HomeProxy ✅ 只有 master 分支
+          # HomeProxy（只有 master 分支）
           rm -rf package/homeproxy
           git clone --depth 1 --branch master --single-branch \
             https://github.com/immortalwrt/homeproxy.git package/homeproxy
@@ -72,13 +72,20 @@ jobs:
       - name: ⚙️ Apply .config
         run: |
           cd openwrt
-          cp $GITHUB_WORKSPACE/.config .config
-          make defconfig 2>&1 | grep -E "^(ERROR|error)" || true
 
-          # 验证目标设备未被 defconfig 重置
+          # 第一步：生成完整默认配置（此时 feeds 已安装，设备列表完整）
+          make defconfig
+
+          # 第二步：追加自定义配置（后写的行会在第二次 defconfig 时覆盖默认值）
+          cat $GITHUB_WORKSPACE/.config >> .config
+
+          # 第三步：再次 defconfig，让追加的配置生效并补全依赖
+          make defconfig
+
+          # 验证目标设备
           if ! grep -q "CONFIG_TARGET_qualcommax_ipq60xx_DEVICE_qihoo_360v6=y" .config; then
-            echo "❌ 目标设备配置丢失，.config 内容如下："
-            grep "CONFIG_TARGET_" .config | grep "=y" || echo "（无目标配置）"
+            echo "❌ 目标设备配置丢失，当前设备配置："
+            grep "CONFIG_TARGET_.*DEVICE.*=y" .config || echo "（无设备配置）"
             exit 1
           fi
           echo "✅ 目标设备锁定成功"
