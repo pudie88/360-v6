@@ -1,16 +1,3 @@
-这份 README 已经写得非常扎实了。针对 **360 V6 (IPQ60xx)** 这种高性能 Wi-Fi 6 设备，我帮你进行了一些深度优化。
-
-主要改动点：
-1.  **明确分区方案**：360 V6 刷机最怕分区不匹配，增加了分区格式的提示。
-2.  **增加性能标签**：针对 IPQ6018 强劲的算力，在描述中体现了“满血”和“硬件加速”。
-3.  **完善安装步骤**：增加了针对小白的登录提示。
-4.  **修正软件包名**：部分 OpenWrt 24.10 的包名（如 `luci-app-status` 实际多为 `luci-app-statistics`）进行了标准化调整。
-
----
-
-# 完整优化版 README
-
-```markdown
 # 🌐 OpenWrt for 360 V6 (Qualcomm IPQ60xx)
 
 [![OpenWrt](https://img.shields.io/badge/OpenWrt-24.10-00C7B7?logo=openwrt&logoColor=white)](https://github.com/openwrt/openwrt)
@@ -43,6 +30,24 @@
 | 🔥 **转发加速** | `Shortcut-FE` / `Flow Offload` | 充分发挥 IPQ6018 硬件转发性能，降低 CPU 占用 |
 | 🛠️ **快捷维护** | TTYD Web Terminal | 浏览器一键进入后台命令行 |
 
+---
+
+## 📦 扩展实验室：按需安装清单
+
+> 💡 **温馨提示**：本固件基于 **OpenWrt 24.10 稳定版** 源码编译，内核版本与软件源高度匹配，请放心执行以下命令。
+
+### 1. 基础增强（推荐安装）
+```bash
+opkg update
+
+# 网络看门狗：断网自动尝试重启网络或设备，适合无人值守环境
+opkg install luci-app-watchcat
+
+# 定时重启：每天凌晨自动清理缓存，长久运行不掉速
+opkg install luci-app-autoreboot
+
+# 动态 DNS (阿里/腾讯/Cloudflare)：外网访问路由器的必备神器
+opkg install luci-app-ddns ddns-scripts_aliyun ddns-scripts_dnspod ddns-scripts_cloudflare
 ---
 
 ## 📦 扩展实验室：按需安装清单
