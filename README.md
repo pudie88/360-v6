@@ -1,7 +1,5 @@
 # 🌐 OpenWrt for 360 V6 (Qualcomm IPQ60xx)
 
-[![Build Status](https://github.com/${{ github.repository }}/actions/workflows/openwrt-builder.yml/badge.svg)](https://github.com/${{ github.repository }}/actions/workflows/openwrt-builder.yml)
-[![License](https://img.shields.io/badge/License-GPLv2-blue.svg)](https://www.gnu.org/licenses/gpl-2.0.html)
 [![OpenWrt](https://img.shields.io/badge/OpenWrt-openwrt--24.10-00C7B7?logo=openwrt)](https://github.com/openwrt/openwrt)
 
 > 🤖 基于 GitHub Actions 自动化编译的 OpenWrt **稳定版**固件，专为 **360 V6 (Qihoo 360V6)** 路由器定制。  
