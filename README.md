@@ -1,97 +1,111 @@
 # 🌐 OpenWrt for 360 V6 (Qualcomm IPQ60xx)
 
-[![OpenWrt](https://img.shields.io/badge/OpenWrt-24.10-00C7B7?logo=openwrt&logoColor=white)](https://github.com/openwrt/openwrt)
-[![GitHub Release](https://img.shields.io/github/v/release/你的用户名/你的仓库名?color=blue&logo=github)](https://github.com/你的用户名/你的仓库名/releases)
-[![License](https://img.shields.io/badge/License-GPL--3.0-orange)](LICENSE)
+[](https://github.com/openwrt/openwrt)
+[](https://www.google.com/search?q=https://github.com/%E4%BD%A0%E7%9A%84%E7%94%A8%E6%88%B7%E5%90%8D/%E4%BD%A0%E7%9A%84%E4%BB%93%E5%BA%93%E5%90%8D/actions)
 
-> 🤖 **自动化编译报告**：本固件专为 **360 V6 (Qihoo 360V6)** 定制。采用极简主义构建思路，仅内置核心驱动与高频插件，剩余空间通过 `opkg` 自由扩展，确保系统极致稳定与流畅。
+> 🤖 **项目说明**：本固件专为 **360 V6** 路由器定制，基于 GitHub Actions 自动化编译。
+> 核心理念：**轻量稳定、驱动完整、按需扩展**。内置常用核心插件，剩余空间留给用户自由发挥。
 
----
+-----
 
-## 🖥️ 硬件规格与镜像说明
+## ✨ 固件核心特性
 
-| 属性 | 规格参数 | 备注 |
-|:---|:---|:---|
-| **SoC 平台** | Qualcomm IPQ6018 (4核 A53) | 强大的 Wi-Fi 6 处理能力 |
-| **内存/闪存** | 512MB DDR3L / 128MB NAND | 建议使用 UBI 格式以获得最大空间 |
-| **默认登录地址** | `192.168.1.1` | 首次进入无需密码，建议立即设置 |
-| **默认账户** | `root` | 支持 SSH (Port 22) 与 TTYD 终端 |
+| 类别 | 插件/组件 | 功能说明 |
+| :--- | :--- | :--- |
+| 🎨 **界面** | Argon Theme | 默认简体中文，支持深色/浅色模式自动切换 |
+| 🛡️ **拦截** | luci-app-adblock | 官方轻量化 DNS 过滤，保护全家设备免受广告干扰 |
+| 🚀 **加速** | HomeProxy | 基于 `sing-box` 与 `nftables`，极致的网络中转性能 |
+| 🖨️ **共享** | p910nd | 支持 USB 打印机网络共享，让老旧设备焕发新生 |
+| 🛠️ **工具** | TTYD Terminal | 网页直接进入 SSH 命令行，无需额外客户端 |
 
----
-
-## ✨ 固件核心特性（已内置）
-
-| 功能模块 | 插件/组件 | 说明 |
-|:---|:---|:---|
-| 🎨 **UI 交互** | Argon Theme + 简体中文 | 适配移动端，支持暗黑模式自动切换 |
-| 🛡️ **广告拦截** | `luci-app-adblock` | 官方轻量化 DNS 过滤，内存占用极低 (<15MB) |
-| 🚀 **科学上网** | `HomeProxy` + `sing-box` | 基于 **nftables** 转发，支持 Hysteria2/TUIC v5 |
-| 🖨️ **打印共享** | `p910nd` + `kmod-usb-printer` | 完美兼容 Canon/HP 等老旧打印机 (TCP 9100) |
-| 🔥 **转发加速** | `Shortcut-FE` / `Flow Offload` | 充分发挥 IPQ6018 硬件转发性能，降低 CPU 占用 |
-| 🛠️ **快捷维护** | TTYD Web Terminal | 浏览器一键进入后台命令行 |
-
----
+-----
 
 ## 📦 扩展实验室：按需安装清单
 
-> 💡 **温馨提示**：本固件基于 **OpenWrt 24.10 稳定版** 源码编译，内核版本与软件源高度匹配，请放心执行以下命令。
+> 💡 **操作指南**：通过 SSH 或 TTYD 进入后台，直接复制以下命令即可完成安装。
 
-### 1. 基础增强（推荐安装）
+### 1\. 基础增强（推荐安装）
 
+**🔁 更新软件包索引**
+
+```bash
 opkg update
+```
 
-### 网络看门狗：断网自动尝试重启网络或设备，适合无人值守环境
+**🛡️ 网络看门狗**
+
+> 断网后自动检测并重启网络或路由器，适合无人值守环境。
+
+```bash
 opkg install luci-app-watchcat
+```
 
-###定时重启：每天凌晨自动清理缓存，长久运行不掉速
+**⏰ 定时重启**
+
+> 建议设置每周凌晨自动重启，保持系统长久运行不掉速。
+
+```bash
 opkg install luci-app-autoreboot
+```
 
-###动态 DNS (阿里/腾讯/Cloudflare)：外网访问路由器的必备神器
-opkg install luci-app-ddns ddns-scripts_aliyun ddns-scripts_dnspod ddns-scripts_cloudflare
----
+**☁️ 动态 DNS (DDNS)**
 
-## 📦 扩展实验室：按需安装清单
+> 外网访问必备！支持阿里云、腾讯云 DNSPod 及 Cloudflare。
 
-> 💡 **温馨提示**：本固件基于 **OpenWrt 24.10 稳定版** 源码编译，内核版本与软件源高度匹配，请放心执行以下命令。
+```bash
+opkg install luci-app-ddns ddns-scripts_aliyun ddns-scripts_dnspod ddns-scripts-cloudflare
+```
 
-### 1. 基础增强（推荐安装）
-opkg update
-###网络看门狗：断网自动尝试重启网络或设备，适合无人值守环境
-opkg install luci-app-watchcat
+-----
 
-#### 定时重启：每天凌晨自动清理缓存，长久运行不掉速
-opkg install luci-app-autoreboot
+### 2\. 存储与文件管理
 
-###动态 DNS (阿里/腾讯/Cloudflare)：外网访问路由器的必备神器
-opkg install luci-app-ddns ddns-scripts_aliyun ddns-scripts_dnspod ddns-scripts_cloudflare
+**📁 网页文件管理器**
 
+> 在浏览器端直接管理 U 盘文件，支持上传、下载及在线编辑。
 
-###文件管理器：在网页端直接上传、下载、修改 U 盘文件
+```bash
 opkg install luci-app-fileassistant
+```
 
-### 网络共享 (Samba4)：让电视、电脑直接访问 U 盘里的电影
+**📺 网络共享 (Samba4)**
+
+> 将 U 盘变为局域网网盘，支持电视、电脑直接播放 U 盘电影。
+
+```bash
 opkg install luci-app-samba4
+```
 
+-----
 
-### 3. 电竞与极致网络
+### 3\. 电竞与极致网络
 
-# UPnP：优化游戏机 (PS5/Switch) NAT 类型，提升联机成功率
+**🎮 UPnP 自动映射**
+
+> 优化 PS5/Switch/Xbox 联机体验，提升 NAT 类型和下载速度。
+
+```bash
 opkg install luci-app-upnp
+```
 
-###SQM 流量管理：多人抢网时保证游戏延迟依然稳定 (防止 Bufferbloat)
+**🚀 SQM 流量管理**
+
+> 多人抢网不掉线，有效解决网络延迟波动（Bufferbloat）。
+
+```bash
 opkg install luci-app-sqm
+```
 
+-----
 
-## ⚠️ 注意事项
+## ⚠️ 重要说明
 
-1. **首次刷入**：请确保您已通过 SSH 开启了 360 V6 的原厂权限并刷入了兼容的 Bootloader。
-2. **分区扩容**：本固件默认分区表适配官方布局。如需利用剩余闪存空间，请在刷入后通过 `Diskman` 挂载或自行调整分区。
-3. **打印机配置**：使用 `p910nd` 时，请务必在 Windows 端打印机属性中**取消勾选“启用双向支持”**，否则可能无法正常打印。
+1.  **刷机前置**：请确保 360 V6 已开启 SSH 权限并刷入兼容的第三方 Bootloader。
+2.  **打印机配置**：使用 `p910nd` 共享时，**必须**在 Windows 打印机属性中关闭“启用双向支持”。
+3.  **空间管理**：若刷入后空间不足，建议通过 `Diskman` 插件将固件分区扩展至 NAND 剩余空间。
 
+## 🛠️ 技术支持与致谢
 
-## 🛠️ 开发与贡献
-
-* **固件源码**: [ImmortalWrt](https://github.com/immortalwrt/immortalwrt) / [OpenWrt Official](https://github.com/openwrt/openwrt)
-* **编译工具**: GitHub Actions
-* **特别感谢**: P3TERX (Actions-OpenWrt)
-
+  * **源码提供**: [ImmortalWrt](https://github.com/immortalwrt/immortalwrt) / [OpenWrt](https://github.com/openwrt/openwrt)
+  * **编译环境**: GitHub Actions
+  * **特别鸣谢**: [P3TERX](https://github.com/P3TERX/Actions-OpenWrt)
