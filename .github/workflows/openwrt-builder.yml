@@ -60,7 +60,7 @@ jobs:
 
           # HomeProxy（分支与 openwrt-24.10 对齐）
           rm -rf package/homeproxy
-          git clone --depth 1 --branch openwrt-24.10 --single-branch \
+          git clone --depth 1 --branch master --single-branch \
             https://github.com/immortalwrt/homeproxy.git package/homeproxy
 
       - name: 🔄 Update & Install Feeds
