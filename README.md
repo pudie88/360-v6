@@ -28,7 +28,7 @@ opkg update
 opkg install luci-app-adblock luci-i18n-adblock-zh-cn
 ```
 
-### 🖨️ USB 打印机共享（支持 Canon MF4400 等）
+### 🖨️ USB 打印机共享
 > 插入打印机后执行，支持 Raw 9100 端口共享
 ```bash
 opkg install kmod-usb-printer p910nd luci-app-p910nd luci-i18n-p910nd-zh-cn
