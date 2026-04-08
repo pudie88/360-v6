@@ -101,13 +101,3 @@ opkg install luci-app-sqm
 * **固件源码**: [ImmortalWrt](https://github.com/immortalwrt/immortalwrt) / [OpenWrt Official](https://github.com/openwrt/openwrt)
 * **编译工具**: GitHub Actions
 * **特别感谢**: P3TERX (Actions-OpenWrt)
-
----
-```
-
-### 几点建议：
-1. **针对 360 V6 的 UBI 镜像**：如果你的项目生成了多个文件，建议在 `Organize files` 步骤中，把 `.ubi` 文件重命名为包含设备名的清晰格式。
-2. **关于 HomeProxy**：360 V6 的 CPU 性能很强，其实跑 OpenClash 也不在话下，但如果你追求极致响应，README 里保留 HomeProxy 是正确的选择。
-3. **打印机型号**：你在 README 里写了 `Canon MF4400`，这是你自己的型号吗？如果是的话，这种带有明确型号的标注会极大增加其他用户的信任感。
-
-**现在你的两个 Actions 项目（HomeProxy 版和 PassWall 版）都跑通了吗？** 如果还有 `403` 权限问题，记得按照我们之前的方案把 `permissions` 加上。
