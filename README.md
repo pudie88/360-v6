@@ -37,51 +37,50 @@
 > 💡 **温馨提示**：本固件基于 **OpenWrt 24.10 稳定版** 源码编译，内核版本与软件源高度匹配，请放心执行以下命令。
 
 ### 1. 基础增强（推荐安装）
-```bash
+
 opkg update
 
-网络看门狗：断网自动尝试重启网络或设备，适合无人值守环境
+# 网络看门狗：断网自动尝试重启网络或设备，适合无人值守环境
 opkg install luci-app-watchcat
 
-定时重启：每天凌晨自动清理缓存，长久运行不掉速
+# 定时重启：每天凌晨自动清理缓存，长久运行不掉速
 opkg install luci-app-autoreboot
 
-动态 DNS (阿里/腾讯/Cloudflare)：外网访问路由器的必备神器
+# 动态 DNS (阿里/腾讯/Cloudflare)：外网访问路由器的必备神器
 opkg install luci-app-ddns ddns-scripts_aliyun ddns-scripts_dnspod ddns-scripts_cloudflare
 ---
 
-📦 扩展实验室：按需安装清单
+## 📦 扩展实验室：按需安装清单
 
 > 💡 **温馨提示**：本固件基于 **OpenWrt 24.10 稳定版** 源码编译，内核版本与软件源高度匹配，请放心执行以下命令。
 
-1. 基础增强（推荐安装）
-```bash
+### 1. 基础增强（推荐安装）
 opkg update
-网络看门狗：断网自动尝试重启网络或设备，适合无人值守环境
+# 网络看门狗：断网自动尝试重启网络或设备，适合无人值守环境
 opkg install luci-app-watchcat
 
-定时重启：每天凌晨自动清理缓存，长久运行不掉速
+# 定时重启：每天凌晨自动清理缓存，长久运行不掉速
 opkg install luci-app-autoreboot
 
-动态 DNS (阿里/腾讯/Cloudflare)：外网访问路由器的必备神器
+# 动态 DNS (阿里/腾讯/Cloudflare)：外网访问路由器的必备神器
 opkg install luci-app-ddns ddns-scripts_aliyun ddns-scripts_dnspod ddns-scripts_cloudflare
-```
 
-2. 娱乐与存储（360 V6 USB口妙用）
-```bash
-文件管理器：在网页端直接上传、下载、修改 U 盘文件
+
+# 文件管理器：在网页端直接上传、下载、修改 U 盘文件
 opkg install luci-app-fileassistant
- 网络共享 (Samba4)：让电视、电脑直接访问 U 盘里的电影
+
+# 网络共享 (Samba4)：让电视、电脑直接访问 U 盘里的电影
 opkg install luci-app-samba4
 
 
-3. 电竞与极致网络
-```bash
-UPnP：优化游戏机 (PS5/Switch) NAT 类型，提升联机成功率
+### 3. 电竞与极致网络
+
+# UPnP：优化游戏机 (PS5/Switch) NAT 类型，提升联机成功率
 opkg install luci-app-upnp
 
-SQM 流量管理：多人抢网时保证游戏延迟依然稳定 (防止 Bufferbloat)
+# SQM 流量管理：多人抢网时保证游戏延迟依然稳定 (防止 Bufferbloat)
 opkg install luci-app-sqm
+
 
 ## ⚠️ 注意事项
 
@@ -95,3 +94,4 @@ opkg install luci-app-sqm
 * **固件源码**: [ImmortalWrt](https://github.com/immortalwrt/immortalwrt) / [OpenWrt Official](https://github.com/openwrt/openwrt)
 * **编译工具**: GitHub Actions
 * **特别感谢**: P3TERX (Actions-OpenWrt)
+
