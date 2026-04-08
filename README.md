@@ -167,7 +167,3 @@ opkg install luci-app-diskman block-mount kmod-fs-ext4 kmod-usb-storage
 
 本项目仅供学习与研究使用，代码和 README 均结合 AI 生成，编译的固件不包含任何商业授权或担保。  
 使用本固件即表示您同意自行承担所有风险，作者不对因刷机、配置或使用本固件导致的任何设备损坏、数据丢失或网络问题负责。
-
----
-💡 **Star ⭐ 本仓库** 以获取更新通知 | 🐛 遇到问题请提交 [Issues](https://github.com/${{ github.repository }}/issues)
-```
