@@ -1,73 +1,50 @@
 # 🌐 OpenWrt for 360 V6 (Qualcomm IPQ60xx)
 
-[![OpenWrt](https://img.shields.io/badge/OpenWrt-openwrt--24.10-00C7B7?logo=openwrt)](https://github.com/openwrt/openwrt)
+[![OpenWrt](https://img.shields.io/badge/OpenWrt-24.10-00C7B7?logo=openwrt&logoColor=white)](https://github.com/openwrt/openwrt)
+[![GitHub Release](https://img.shields.io/github/v/release/你的用户名/你的仓库名?color=blue&logo=github)](https://github.com/你的用户名/你的仓库名/releases)
+[![License](https://img.shields.io/badge/License-GPL--3.0-orange)](LICENSE)
 
-> 🤖 基于 GitHub Actions 自动化编译的 OpenWrt **稳定版**固件，专为 **360 V6 (Qihoo 360V6)** 路由器定制。  
-> ✅ 开箱即用：内置中文界面、轻量去广告、打印机共享与 HomeProxy，后续可通过 `opkg` 稳定按需扩展。
-
----
-
-## 🖥️ 支持设备
-
-| 设备型号 | SoC 平台 | 架构 | 闪存类型 | 适用镜像 |
-|:---|:---|:---|:---|:---|
-| **360 V6 (Qihoo 360V6)** | Qualcomm IPQ6018 | `aarch64_cortex-a53` | NAND | `*.ubi`, `*.itb` |
+> 🤖 **自动化编译报告**：本固件专为 **360 V6 (Qihoo 360V6)** 定制。采用极简主义构建思路，仅内置核心驱动与高频插件，剩余空间通过 `opkg` 自由扩展，确保系统极致稳定与流畅。
 
 ---
 
-## ✨ 当前固件已内置功能
+## 🖥️ 硬件规格与镜像说明
 
-| 类别 | 插件/组件 | 说明 |
+| 属性 | 规格参数 | 备注 |
 |:---|:---|:---|
-| 🌐 **界面** | 默认简体中文 + Argon 主题 | 首次开机即为中文，支持浅色/深色模式 |
-| 🛡️ **去广告** | `luci-app-adblock` | 官方轻量级 DNS 过滤，内存占用 < 15MB，规则每日自动更新 |
-| 🧭 **科学上网** | `luci-app-homeproxy` + `sing-box` | 内置 GeoIP/GeoSite 数据库，开箱即用 |
-| 🖨️ **打印共享** | `p910nd` + `kmod-usb-printer` | 支持 Canon MF4400 等 USB 打印机共享（需关闭 Windows 双向支持） |
-| 💻 **管理工具** | TTYD 网页终端 | 无需 SSH 客户端，浏览器直接管理路由器 |
-| 🔥 **网络核心** | `dnsmasq-full` + `firewall4` | 高性能 DNS/DHCP + 新版 nftables 防火墙 |
+| **SoC 平台** | Qualcomm IPQ6018 (4核 A53) | 强大的 Wi-Fi 6 处理能力 |
+| **内存/闪存** | 512MB DDR3L / 128MB NAND | 建议使用 UBI 格式以获得最大空间 |
+| **默认登录地址** | `192.168.1.1` | 首次进入无需密码，建议立即设置 |
+| **默认账户** | `root` | 支持 SSH (Port 22) 与 TTYD 终端 |
 
 ---
 
-## 📦 刷入后「按需安装」命令清单（收藏备用）
+## ✨ 固件核心特性（已内置）
 
-> 💡 本固件基于 **`openwrt-24.10` 稳定版** 编译，`opkg` 软件源长期冻结，以下命令刷入后随时可执行，100% 匹配依赖。
+| 功能模块 | 插件/组件 | 说明 |
+|:---|:---|:---|
+| 🎨 **UI 交互** | Argon Theme + 简体中文 | 适配移动端，支持暗黑模式自动切换 |
+| 🛡️ **广告拦截** | `luci-app-adblock` | 官方轻量化 DNS 过滤，内存占用极低 (<15MB) |
+| 🚀 **科学上网** | `HomeProxy` + `sing-box` | 基于 **nftables** 转发，支持 Hysteria2/TUIC v5 |
+| 🖨️ **打印共享** | `p910nd` + `kmod-usb-printer` | 完美兼容 Canon/HP 等老旧打印机 (TCP 9100) |
+| 🔥 **转发加速** | `Shortcut-FE` / `Flow Offload` | 充分发挥 IPQ6018 硬件转发性能，降低 CPU 占用 |
+| 🛠️ **快捷维护** | TTYD Web Terminal | 浏览器一键进入后台命令行 |
 
+---
+
+## 📦 扩展实验室：按需安装清单
+
+> 💡 **温馨提示**：本固件基于 **OpenWrt 24.10 稳定版** 源码编译，内核版本与软件源高度匹配，请放心执行以下命令。
+
+### 1. 基础增强（推荐安装）
 ```bash
-# 🔁 第一步：更新软件包索引（建议每次安装前执行）
 opkg update
 
-# ==========================================
-# 🛡️ 系统稳定性 & 网络增强
-# ==========================================
-# 网络看门狗：外网断线自动重启路由器（防半夜断网）
+# 网络看门狗：断网自动尝试重启网络或设备，适合无人值守环境
 opkg install luci-app-watchcat
 
-# 动态 DNS：支持阿里云/腾讯云/Cloudflare（远程管理必备）
-opkg install luci-app-ddns ddns-scripts_aliyun ddns-scripts_dnspod ddns-scripts-cloudflare
-
-# UPnP 自动端口映射：优化 PS5/Switch/NAT 类型，BT 下载提速
-opkg install luci-app-upnp miniupnpd
-
-# 定时重启：释放内存碎片（建议设置每周日凌晨 4:00）
+# 定时重启：每天凌晨自动清理缓存，长久运行不掉速
 opkg install luci-app-autoreboot
 
-# ==========================================
-# 📁 USB 存储 & 文件管理
-# ==========================================
-# 文件助手：网页端直接管理 U 盘/硬盘文件
-opkg install luci-app-fileassistant
-
-# SMB 局域网共享：将 U 盘/硬盘共享给 Windows/macOS/电视
-opkg install luci-app-samba4 samba4-libs samba4-server
-
-# ==========================================
-# 🧩 其他实用工具（按需）
-# ==========================================
-# 系统状态增强面板
-opkg install luci-app-status
-
-# 更多主题（可选替换 Argon）
-opkg install luci-theme-bootstrap luci-i18n-bootstrap-zh-cn
-
-# 安装完成后刷新 LuCI 菜单
-/etc/init.d/rpcd restart
+# 动态 DNS (阿里/腾讯/Cloudflare)：外网访问路由器的必备神器
+opkg install luci-app-ddns ddns-scripts_aliyun ddns-scripts_dnspod ddns-scripts_cloudflare
