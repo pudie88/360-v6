@@ -1,111 +1,76 @@
+## 🔍 严格核对结果（基于你最后的 `.config`）
+
+| 类别 | 实际编译状态 | 说明 |
+|:---|:---|:---|
+| 🎨 **界面** | ✅ 已内置 | Argon 主题 + 完整简体中文 (`zh-cn`/`zh_Hans`) |
+| 🚀 **代理** | ✅ 已内置 | HomeProxy + `sing-box` 核心 + `kmod-nft-tproxy` |
+| 🛠️ **终端** | ✅ 已内置 | TTYD 网页终端 + 中文包 |
+| 🔌 **USB 硬件** | ✅ 已内置 | `kmod-usb-dwc3`（仅 USB 3.0 控制器驱动） |
+| 🖨️ **打印机共享** | ❌ **未内置** | 需后期 `opkg install p910nd ...` |
+| 🛡️ **去广告** | ❌ **未内置** | 需后期 `opkg install luci-app-adblock ...` |
+| 📶 **无线** | ✅ 已内置 | `ath11k` + QCN9074 固件 |
+| 🔥 **网络核心** | ✅ 已内置 | `dnsmasq-full` + `firewall4` + `nftables` |
+| 🛠️ **基础工具** | ✅ 已内置 | `curl`, `wget-ssl`, `htop`, `bash`, `file` |
+
+> 📌 **结论**：固件仅内置 **中文界面 + HomeProxy + TTYD + USB 3.0 控制器驱动**。`adblock` 和 `p910nd` 均未编译，已完全移至后期按需安装。
+
+---
+
+## 📝 100% 对齐的 README 核心段落（直接替换原文件对应部分）
+
 ```markdown
-# OpenWrt for 360 V6 (Qualcomm IPQ60xx)
+## ✨ 固件核心特性（已内置）
 
-自动构建适用于 **奇虎 360 V6** 路由器的 OpenWrt 固件，基于 GitHub Actions 全自动编译。
-
----
-
-## 📦 固件特性
-
-| 功能 | 状态 |
-|------|------|
-| 中文界面 | ✅ |
-| Argon 主题 | ✅ |
-| HomeProxy + Sing-Box | ✅ |
-| ttyd 网页终端 | ✅ |
-| USB 3.0 驱动（DWC3） | ✅ |
-| ath11k 无线驱动 | ✅ |
-| dnsmasq-full | ✅ |
-| nftables 防火墙 | ✅ |
+| 类别 | 插件/组件 | 功能说明 |
+| :--- | :--- | :--- |
+| 🎨 **界面** | Argon Theme + 中文 | 默认简体中文，支持深色/浅色模式自动切换 |
+| 🚀 **代理** | HomeProxy + sing-box | 基于 `nftables` 透明代理，内置 `kmod-nft-tproxy` 依赖 |
+| 🛠️ **终端** | TTYD Web Terminal | 网页直接进入 SSH 命令行，无需额外客户端 |
+| 🔌 **USB 驱动** | kmod-usb-dwc3 | 完整支持 360 V6 的 USB 3.0 接口硬件识别 |
+| 🔥 **网络核心** | firewall4 + nftables | 新版防火墙架构，转发高效，规则灵活 |
 
 ---
 
-## ⬇️ 下载固件
+## 📦 按需安装清单（稳定版源，100% 可用）
 
-前往 [Releases](../../releases) 页面下载最新版本。
-
-| 文件 | 用途 |
-|------|------|
-| `*-factory.ubi` | 首次刷入（从原厂固件） |
-| `*-sysupgrade.bin` | 已有 OpenWrt 时升级使用 |
-
----
-
-## 🔧 刷机说明
-
-### 首次刷入
-1. 登录路由器原厂管理界面
-2. 找到固件升级页面
-3. 上传 `*-factory.ubi` 文件
-4. 等待重启完成
-
-### 升级 OpenWrt
-1. 登录 LuCI 管理界面 → 系统 → 备份/升级
-2. 上传 `*-sysupgrade.bin` 文件
-3. 等待重启完成
-
-### 刷机后默认信息
-- **管理地址**：http://192.168.1.1
-- **用户名**：root
-- **密码**：（空，直接回车）
-
----
-
-## 🛠️ 手动编译
-
-如需自行编译，克隆本仓库后触发 GitHub Actions 即可：
+> 💡 **前提**：本固件基于 **OpenWrt 24.10 稳定版** 编译，`opkg` 软件源长期冻结。以下为可选插件，按需执行即可。
 
 ```bash
-git clone https://github.com/你的用户名/你的仓库名
-# 修改 .config 后推送，自动触发构建
-git add .config
-git commit -m "update config"
-git push
+# 🔁 第一步：更新软件包索引
+opkg update
 ```
 
-或在 GitHub 仓库页面 → **Actions** → **Build OpenWrt for 360 V6** → **Run workflow** 手动触发。
-
----
-
-## ⚙️ 修改编译配置
-
-编辑仓库根目录的 `.config` 文件即可增减软件包，推送后自动重新编译。
-
-常用配置示例：
-
-```ini
-# 添加一个包
-CONFIG_PACKAGE_包名=y
-
-# 禁用一个包
-# CONFIG_PACKAGE_包名 is not set
+### 🛡️ 去广告（官方轻量级）
+> DNS 层过滤，内存占用 < 15MB，规则每日自动更新
+```bash
+opkg install luci-app-adblock luci-i18n-adblock-zh-cn
 ```
 
----
+### 🖨️ USB 打印机共享（支持 Canon MF4400 等）
+> 插入打印机后执行，支持 Raw 9100 端口共享
+```bash
+opkg install kmod-usb-printer p910nd luci-app-p910nd luci-i18n-p910nd-zh-cn
+```
+> 📌 **关键配置**：Windows 添加打印机时，**必须关闭「启用双向支持」**，否则队列易卡死。
 
-## 📋 设备信息
+### 🛠️ 系统稳定性 & 网络增强
+```bash
+# 网络看门狗（断网自动重启）
+opkg install luci-app-watchcat
 
-| 项目 | 参数 |
-|------|------|
-| 设备 | 奇虎 360 V6 |
-| SoC | Qualcomm IPQ6000 |
-| 架构 | ARM64 |
-| Target | qualcommax / ipq60xx |
-| 无线 | ath11k（2.4G + 5G） |
-| 闪存 | 128MB NAND |
-| 内存 | 256MB DDR |
+# 动态 DNS（阿里云/腾讯云/Cloudflare）
+opkg install luci-app-ddns ddns-scripts_aliyun ddns-scripts_dnspod ddns-scripts-cloudflare
 
----
-
-## ⚠️ 免责声明
-
-刷机有风险，操作需谨慎。固件仅供学习交流使用，因刷机导致的设备损坏概不负责。
-
----
-
-## 📄 License
-
-基于 [OpenWrt](https://github.com/openwrt/openwrt) 构建，遵循 GPL-2.0 协议。
+# UPnP 自动端口映射（优化游戏/NAT）
+opkg install luci-app-upnp
 ```
 
-去睡吧，明天编译好了看 Release 页面 🌙
+### 📁 USB 存储扩展
+```bash
+# 网页文件管理器
+opkg install luci-app-fileassistant
+
+# Samba4 局域网共享
+opkg install luci-app-samba4 samba4-libs
+```
+> 📌 安装后执行 `/etc/init.d/rpcd restart` 或刷新浏览器，新菜单即可显示。
