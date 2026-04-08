@@ -102,19 +102,19 @@ opkg install luci-app-sqm
 
 1.  **刷机前置**：请确保 360 V6 已开启 SSH 权限并刷入兼容的第三方 Bootloader。
 2.  **打印机配置**：使用 `p910nd` 共享时，**必须**在 Windows 打印机属性中关闭“启用双向支持”。
-## 📦 存储空间管理 (针对 128MB NAND)
+## 📦 存储空间说明 (128MB NAND)
 
-> 💡 **360 V6 实际情况**：本固件刷入后约剩余 50MB+ 空间。对于绝大多数用户，这已足够通过 `opkg` 安装各种插件。
+> 💡 本固件刷入后约剩余 **50~60MB** 可用空间，足够安装 10+ 个轻量插件。
 
-### 1. 内部扩容 (推荐)
-若空间不足，建议进入 **“存储” -> “磁盘管理”**，将 NAND 闲置空间格式化并挂载为 `Overlay`。此方案最稳定，不占用 USB 接口。
+### 🔧 如需更大空间？
 
-### 2. USB 3.0 扩展 (进阶)
-利用 360 V6 的 USB 3.0 接口，你可以：
-* **私有云**：挂载 U 盘/移动硬盘，通过内置的 `Samba4` 共享文件。
-* **外部扩容**：将 U 盘挂载为系统外部存储。
-* ⚠️ **警告**：一旦将 U 盘设为系统 Overlay 分区，**请勿在运行中拔出**，否则会导致配置丢失或死机。
+1️⃣ **推荐**：下次编译时调整分区大小  
+   修改工作流：`CONFIG_TARGET_ROOTFS_PARTSIZE=115` → 重新编译，零风险获得 +15MB
 
+2️⃣ **灵活**：使用 USB 3.0 接口扩展  
+   ```bash
+   opkg install luci-app-diskman block-mount kmod-fs-ext4
+   # 插入 U 盘后，LuCI → 磁盘管理 → 格式化为 ext4 → 挂载到 /ext_overlay
 ## 🛠️ 技术支持与致谢
 
   * **源码提供**: [ImmortalWrt](https://github.com/immortalwrt/immortalwrt) / [OpenWrt](https://github.com/openwrt/openwrt)
