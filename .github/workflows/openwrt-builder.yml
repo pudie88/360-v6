@@ -69,40 +69,81 @@ jobs:
           ./scripts/feeds update -a
           ./scripts/feeds install -a
 
-      - name: 🔧 Patch homeproxy Makefile（修复 sing-box 循环依赖）
+      - name: 🔧 Fix sing-box-tiny recursive dependency
         run: |
           cd openwrt
-          HP_MK="package/homeproxy/Makefile"
+          SINGBOX_MK="feeds/packages/net/sing-box/Makefile"
 
-          # 将 +sing-box 改为条件依赖，避免与 sing-box-tiny 的 choice 冲突
-          # 标准写法：+!PACKAGE_sing-box-tiny:sing-box
-          sed -i 's/+sing-box/+!PACKAGE_sing-box-tiny:sing-box/g' "$HP_MK"
+          echo "📋 修改前 sing-box Makefile 末尾："
+          tail -10 "$SINGBOX_MK"
 
-          echo "✅ homeproxy Makefile 修补完成："
-          grep -A6 "LUCI_DEPENDS" "$HP_MK"
+          # sing-box-tiny 是在 openwrt-24.10 新增的 BUILD_VARIANT
+          # 它与 homeproxy 依赖的 sing-box 形成 kconfig choice 循环
+          # 最简单的解法：删除 sing-box-tiny 的 Package 定义和 BuildPackage 调用
+          # 保留完整版 sing-box 即可满足 homeproxy 需求
+
+          # 找到 sing-box-tiny 相关行并注释掉
+          # 通常形如: $(eval $(call BuildPackage,sing-box-tiny))
+          sed -i '/BuildPackage,sing-box-tiny/d' "$SINGBOX_MK"
+
+          # 同时删除 Package/sing-box-tiny 的 define 块
+          python3 - <<'PYEOF'
+import re, sys
+
+with open("feeds/packages/net/sing-box/Makefile", "r") as f:
+    content = f.read()
+
+# 删除 define Package/sing-box-tiny ... endef 块
+content = re.sub(
+    r'define Package/sing-box-tiny.*?^endef\n',
+    '',
+    content,
+    flags=re.DOTALL | re.MULTILINE
+)
+
+# 删除 define Package/sing-box-tiny/description ... endef 块
+content = re.sub(
+    r'define Package/sing-box-tiny/description.*?^endef\n',
+    '',
+    content,
+    flags=re.DOTALL | re.MULTILINE
+)
+
+# 删除 define Package/sing-box-tiny/install ... endef 块
+content = re.sub(
+    r'define Package/sing-box-tiny/install.*?^endef\n',
+    '',
+    content,
+    flags=re.DOTALL | re.MULTILINE
+)
+
+with open("feeds/packages/net/sing-box/Makefile", "w") as f:
+    f.write(content)
+
+print("✅ sing-box-tiny 定义已清除")
+PYEOF
+
+          echo "📋 修改后 sing-box Makefile 末尾："
+          tail -20 "$SINGBOX_MK"
 
       - name: ⚙️ Apply .config
         run: |
           cd openwrt
 
-          # 第一步：先生成完整默认配置（设备列表此时已完整）
-          make defconfig
+          # 策略：只跑一次 defconfig，之前把配置完全准备好
+          # 1. 先复制我们的配置
+          cp $GITHUB_WORKSPACE/.config .config
 
-          # 第二步：强制替换设备 choice（sed 直接改文件，不追加）
-          # 先删除所有 DEVICE_ 行，再插入正确设备
-          sed -i '/CONFIG_TARGET_qualcommax_ipq60xx_DEVICE_/d' .config
-          echo "CONFIG_TARGET_qualcommax_ipq60xx_DEVICE_qihoo_360v6=y" >> .config
+          # 2. 只跑一次 defconfig（补全依赖，不会重置已有的 =y 配置）
+          make defconfig 2>&1 | grep -v "^#" | grep -v "^$" || true
 
-          # 第三步：追加其余自定义包配置（跳过 TARGET_ 行，避免 choice 冲突）
-          grep -v "^CONFIG_TARGET_" $GITHUB_WORKSPACE/.config >> .config
-
-          # 第四步：再跑一次 defconfig 补全依赖
-          make defconfig
-
-          # 验证
+          # 3. 验证目标设备
           if ! grep -q "CONFIG_TARGET_qualcommax_ipq60xx_DEVICE_qihoo_360v6=y" .config; then
             echo "❌ 目标设备配置丢失，当前设备配置："
             grep "CONFIG_TARGET_.*DEVICE.*=y" .config || echo "（无设备配置）"
+            echo ""
+            echo "📋 完整 TARGET 配置："
+            grep "CONFIG_TARGET_" .config | grep "=y"
             exit 1
           fi
           echo "✅ 目标设备锁定成功"
