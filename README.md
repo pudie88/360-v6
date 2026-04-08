@@ -1,72 +1,75 @@
-# OpenWrt 自动编译 — 360 V6
+# 🌐 OpenWrt for 360 V6 (Qualcomm IPQ60xx)
 
-基于 GitHub Actions 自动编译适配 360 V6 路由器的 OpenWrt 固件。
+[![Build Status](https://github.com/${{ github.repository }}/actions/workflows/openwrt-builder.yml/badge.svg)](https://github.com/${{ github.repository }}/actions/workflows/openwrt-builder.yml)
+[![License](https://img.shields.io/badge/License-GPLv2-blue.svg)](https://www.gnu.org/licenses/gpl-2.0.html)
+[![OpenWrt](https://img.shields.io/badge/OpenWrt-openwrt--24.10-00C7B7?logo=openwrt)](https://github.com/openwrt/openwrt)
 
-## 设备信息
+> 🤖 基于 GitHub Actions 自动化编译的 OpenWrt **稳定版**固件，专为 **360 V6 (Qihoo 360V6)** 路由器定制。  
+> ✅ 开箱即用：内置中文界面、轻量去广告、打印机共享与 HomeProxy，后续可通过 `opkg` 稳定按需扩展。
 
-| 项目 | 参数 |
-|------|------|
-| 设备 | 360 V6 全屋路由 |
-| 芯片 | Qualcomm IPQ6000（四核 A53 1.2GHz）|
-| 内存 | 512MB |
-| 闪存 | 128MB NAND |
-| 无线 | Wi-Fi 6 双频 AX1800 |
-| 接口 | 4 × 千兆 LAN/WAN + 1 × USB 2.0 |
-| OpenWrt Target | qualcommax / ipq60xx |
+---
 
-## 内置功能
+## 🖥️ 支持设备
 
-- **HomeProxy** — 代理工具（基于 sing-box）
-- **ttyd** — 网页终端
-- **Argon** — 现代化主题
-- **中文界面** — 全中文 LuCI
+| 设备型号 | SoC 平台 | 架构 | 闪存类型 | 适用镜像 |
+|:---|:---|:---|:---|:---|
+| **360 V6 (Qihoo 360V6)** | Qualcomm IPQ6018 | `aarch64_cortex-a53` | NAND | `*.ubi`, `*.itb` |
 
-## 固件下载
+---
 
-前往 [Releases](../../releases) 页面下载最新固件。
+## ✨ 当前固件已内置功能
 
-| 文件 | 用途 |
-|------|------|
-| `*-squashfs-factory.ubi` | 全新刷入（通过 uboot）|
-| `*-initramfs-uImage.itb` | 内存启动测试用，重启后消失 |
+| 类别 | 插件/组件 | 说明 |
+|:---|:---|:---|
+| 🌐 **界面** | 默认简体中文 + Argon 主题 | 首次开机即为中文，支持浅色/深色模式 |
+| 🛡️ **去广告** | `luci-app-adblock` | 官方轻量级 DNS 过滤，内存占用 < 15MB，规则每日自动更新 |
+| 🧭 **科学上网** | `luci-app-homeproxy` + `sing-box` | 内置 GeoIP/GeoSite 数据库，开箱即用 |
+| 🖨️ **打印共享** | `p910nd` + `kmod-usb-printer` | 支持 Canon MF4400 等 USB 打印机共享（需关闭 Windows 双向支持） |
+| 💻 **管理工具** | TTYD 网页终端 | 无需 SSH 客户端，浏览器直接管理路由器 |
+| 🔥 **网络核心** | `dnsmasq-full` + `firewall4` | 高性能 DNS/DHCP + 新版 nftables 防火墙 |
 
-## 刷机方法
+---
 
-### 从原厂固件刷入
+## 📦 刷入后「按需安装」命令清单（收藏备用）
 
-1. 用网线连接路由器任意 LAN 口
-2. 按住 Reset 键同时上电，等红灯亮起后松开，进入 uboot
-3. 电脑网卡设置静态 IP：`192.168.1.10`，网关：`192.168.1.1`
-4. 浏览器打开 `192.168.1.1` 进入 uboot 页面
-5. 选择 `factory.ubi` 文件上传刷入
-6. 等待重启完成
-
-### 从 OpenWrt 升级
+> 💡 本固件基于 **`openwrt-24.10` 稳定版** 编译，`opkg` 软件源长期冻结，以下命令刷入后随时可执行，100% 匹配依赖。
 
 ```bash
-sysupgrade -v /tmp/openwrt-*-sysupgrade.tar
-```
+# 🔁 第一步：更新软件包索引（建议每次安装前执行）
+opkg update
 
-## 首次登录
+# ==========================================
+# 🛡️ 系统稳定性 & 网络增强
+# ==========================================
+# 网络看门狗：外网断线自动重启路由器（防半夜断网）
+opkg install luci-app-watchcat
 
-| 项目 | 默认值 |
-|------|--------|
-| 管理地址 | http://192.168.1.1 |
-| 用户名 | root |
-| 密码 | 无（直接回车）|
+# 动态 DNS：支持阿里云/腾讯云/Cloudflare（远程管理必备）
+opkg install luci-app-ddns ddns-scripts_aliyun ddns-scripts_dnspod ddns-scripts-cloudflare
 
-## 编译说明
+# UPnP 自动端口映射：优化 PS5/Switch/NAT 类型，BT 下载提速
+opkg install luci-app-upnp miniupnpd
 
-本仓库使用 GitHub Actions 自动编译，基于 OpenWrt `main` 分支（snapshot）。
+# 定时重启：释放内存碎片（建议设置每周日凌晨 4:00）
+opkg install luci-app-autoreboot
 
-手动触发编译：Actions → Build OpenWrt for 360 V6 → Run workflow
+# ==========================================
+# 📁 USB 存储 & 文件管理
+# ==========================================
+# 文件助手：网页端直接管理 U 盘/硬盘文件
+opkg install luci-app-fileassistant
 
-每次 push 修改 `.github/workflows/openwrt-builder.yml` 也会自动触发编译。
+# SMB 局域网共享：将 U 盘/硬盘共享给 Windows/macOS/电视
+opkg install luci-app-samba4 samba4-libs samba4-server
 
-编译时间约 3～4 小时。
+# ==========================================
+# 🧩 其他实用工具（按需）
+# ==========================================
+# 系统状态增强面板
+opkg install luci-app-status
 
-## 注意事项
+# 更多主题（可选替换 Argon）
+opkg install luci-theme-bootstrap luci-i18n-bootstrap-zh-cn
 
-- 固件基于 snapshot 分支，功能最新但稳定性不如正式版
-- 刷机有风险，请确认文件正确后再操作
-- 如遇问题可通过 uboot 重新刷入恢复
+# 安装完成后刷新 LuCI 菜单
+/etc/init.d/rpcd restart
