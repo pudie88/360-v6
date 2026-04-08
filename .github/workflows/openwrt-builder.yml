@@ -9,7 +9,7 @@ on:
 
 env:
   REPO_URL: https://github.com/openwrt/openwrt
-  REPO_BRANCH: main
+  REPO_BRANCH: openwrt-24.10  # ✅ 改为官方稳定版，避免 opkg 问题
   TZ: Asia/Shanghai
 
 jobs:
@@ -25,19 +25,12 @@ jobs:
 
       - name: 🗑️ 释放磁盘空间
         run: |
-          sudo rm -rf /usr/share/dotnet
-          sudo rm -rf /usr/local/lib/android
-          sudo rm -rf /opt/ghc
-          sudo rm -rf /opt/hostedtoolcache/CodeQL
-          sudo rm -rf /usr/local/share/boost
-          sudo rm -rf /usr/share/swift
-          sudo rm -rf /usr/local/.ghcup
-          sudo rm -rf /usr/lib/jvm
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc \
+            /opt/hostedtoolcache/CodeQL /usr/local/share/boost /usr/share/swift \
+            /usr/local/.ghcup /usr/lib/jvm
           sudo docker rmi $(docker images -q) 2>/dev/null || true
-          sudo apt-get autoremove -y --purge
-          sudo apt-get clean
-          sudo swapoff -a
-          sudo rm -f /swapfile /mnt/swapfile
+          sudo apt-get autoremove -y --purge && sudo apt-get clean
+          sudo swapoff -a && sudo rm -f /swapfile /mnt/swapfile
           df -h
 
       - name: 🛠️ 安装编译依赖
@@ -63,33 +56,26 @@ jobs:
           cd openwrt
 
           gh_download() {
-            local url="$1"
-            local dest="$2"
-            local tmp
+            local url="$1" dest="$2" tmp
             tmp=$(mktemp /tmp/pkg_XXXXXX.tar.gz)
             echo ">>> 下载: $url"
-            curl -L -s \
-              --retry 3 \
-              --retry-delay 5 \
+            curl -L -s --retry 3 --retry-delay 5 \
               -H "User-Agent: Mozilla/5.0 (GitHub Actions OpenWrt Builder)" \
-              -o "$tmp" \
-              "$url"
-            if ! file "$tmp" | grep -q "gzip compressed"; then
-              echo "❌ 下载失败，实际内容："
-              head -5 "$tmp"
-              rm -f "$tmp"
-              return 1
-            fi
-            mkdir -p "$dest"
-            tar -xzf "$tmp" -C "$dest" --strip-components=1
-            rm -f "$tmp"
+              -o "$tmp" "$url" || return 1
+            file "$tmp" | grep -q "gzip compressed" || { echo "❌ 下载失败"; rm -f "$tmp"; return 1; }
+            mkdir -p "$dest" && tar -xzf "$tmp" -C "$dest" --strip-components=1 && rm -f "$tmp"
             echo "✅ 安装完成: $dest"
           }
 
+          # Argon 主题
           rm -rf package/lean/luci-theme-argon 2>/dev/null || true
-          gh_download \
-            "https://github.com/jerrykuku/luci-theme-argon/archive/refs/heads/master.tar.gz" \
-            "package/luci-theme-argon"
+          gh_download "https://github.com/jerrykuku/luci-theme-argon/archive/refs/heads/master.tar.gz" "package/luci-theme-argon"
+
+          # 🔧 homeproxy（直接克隆到 package，避免 feeds 配置问题）
+          echo "📥 克隆 homeproxy..."
+          git clone --depth 1 --branch master --single-branch \
+            https://github.com/immortalwrt/homeproxy.git \
+            package/homeproxy || echo "⚠️ homeproxy 克隆失败，请检查网络"
 
       - name: 🔄 更新 Feeds
         run: |
@@ -100,39 +86,74 @@ jobs:
       - name: ⚙️ 配置编译目标
         run: |
           cd openwrt
-
           {
+            # ========== 目标设备 ==========
             echo "CONFIG_TARGET_qualcommax=y"
             echo "CONFIG_TARGET_qualcommax_ipq60xx=y"
             echo "CONFIG_TARGET_qualcommax_ipq60xx_DEVICE_qihoo_360v6=y"
             echo "CONFIG_TARGET_ROOTFS_PARTSIZE=100"
+            echo "CONFIG_TARGET_ROOTFS_SQUASHFS=y"
+            
+            # ========== 编译优化 ==========
             echo "CONFIG_CCACHE=y"
             echo "CONFIG_SSTRIP=y"
-            echo "CONFIG_TARGET_ROOTFS_SQUASHFS=y"
+            
+            # ========== LuCI 基础 ==========
             echo "CONFIG_PACKAGE_luci=y"
             echo "CONFIG_PACKAGE_luci-base=y"
             echo "CONFIG_PACKAGE_luci-compat=y"
             echo "CONFIG_PACKAGE_luci-lib-ipkg=y"
             echo "CONFIG_PACKAGE_luci-ssl=y"
             echo "CONFIG_PACKAGE_luci-theme-bootstrap=y"
+            
+            # 🔧 中文界面（关键）
+            echo "CONFIG_LUCI_LANG_zh-cn=y"
+            echo "CONFIG_LUCI_LANG_zh_Hans=y"
             echo "CONFIG_PACKAGE_luci-i18n-base-zh-cn=y"
+            echo "CONFIG_PACKAGE_luci-i18n-firewall-zh-cn=y"
+            echo "CONFIG_PACKAGE_luci-i18n-opkg-zh-cn=y"
+            
+            # ========== 网络组件 ==========
             echo "CONFIG_PACKAGE_dnsmasq-full=y"
             echo "# CONFIG_PACKAGE_dnsmasq is not set"
             echo "CONFIG_PACKAGE_firewall4=y"
             echo "CONFIG_PACKAGE_nftables=y"
             echo "CONFIG_PACKAGE_kmod-nft-offload=y"
             echo "CONFIG_PACKAGE_opkg=y"
+            
+            # ========== 无线驱动 ==========
             echo "CONFIG_PACKAGE_kmod-ath11k=y"
             echo "CONFIG_PACKAGE_kmod-ath10k-ct=y"
             echo "CONFIG_PACKAGE_ath11k-firmware-qcn9074=y"
-            echo "# CONFIG_PACKAGE_luci-app-passwall is not set"
+            
+            # ========== 插件 - homeproxy ==========
             echo "CONFIG_PACKAGE_luci-app-homeproxy=y"
+            echo "CONFIG_PACKAGE_luci-i18n-homeproxy-zh-cn=y"
+            echo "CONFIG_PACKAGE_sing-box=y"
+            echo "CONFIG_PACKAGE_sing-box-geosite=y"
+            echo "CONFIG_PACKAGE_sing-box-geoip=y"
+            
+            # 🔧 去广告插件（官方轻量级，稳定版分支 100% 可用）
+            echo "CONFIG_PACKAGE_luci-app-adblock=y"
+            echo "CONFIG_PACKAGE_luci-i18n-adblock-zh-cn=y"
+            
+            # 🔧 打印机共享（可选，如需请保留）
+            echo "CONFIG_PACKAGE_kmod-usb-printer=y"
+            echo "CONFIG_PACKAGE_p910nd=y"
+            echo "CONFIG_PACKAGE_luci-app-p910nd=y"
+            echo "CONFIG_PACKAGE_luci-i18n-p910nd-zh-cn=y"
+            
+            # 其他工具
             echo "CONFIG_PACKAGE_luci-app-ttyd=y"
+            echo "CONFIG_PACKAGE_luci-i18n-ttyd-zh-cn=y"
             echo "CONFIG_PACKAGE_curl=y"
             echo "CONFIG_PACKAGE_wget-ssl=y"
             echo "CONFIG_PACKAGE_htop=y"
             echo "CONFIG_PACKAGE_bash=y"
             echo "CONFIG_PACKAGE_file=y"
+            
+            # 禁用不需要的包
+            echo "# CONFIG_PACKAGE_luci-app-passwall is not set"
             echo "# CONFIG_PACKAGE_luci-app-adguardhome is not set"
             echo "# CONFIG_PACKAGE_luci-app-openclash is not set"
             echo "# CONFIG_PACKAGE_luci-app-mosdns is not set"
@@ -140,26 +161,19 @@ jobs:
             echo "# CONFIG_PACKAGE_v2ray-geosite is not set"
             echo "# CONFIG_PACKAGE_docker is not set"
             echo "# CONFIG_PACKAGE_xray-core is not set"
-            echo "# CONFIG_PACKAGE_sing-box is not set"
             echo "# CONFIG_PACKAGE_hysteria is not set"
             echo "# CONFIG_PACKAGE_naiveproxy is not set"
             echo "# CONFIG_PACKAGE_tuic-client is not set"
-            echo "CONFIG_PACKAGE_luci-i18n-base-zh-cn=y"
-            echo "CONFIG_PACKAGE_luci-i18n-homeproxy-zh-cn=y"
-            echo "CONFIG_PACKAGE_luci-i18n-ttyd-zh-cn=y"
-            echo "CONFIG_PACKAGE_luci-i18n-firewall-zh-cn=y"
-            echo "CONFIG_PACKAGE_luci-i18n-opkg-zh-cn=y"
+            
           } > .config
 
-          echo "=== 第一次 defconfig 前验证 ==="
-          grep "CONFIG_TARGET_qualcommax" .config && echo "目标写入成功" || echo "目标写入失败"
+          # 验证关键配置
+          echo "=== 配置验证 ==="
+          grep -E "CONFIG_TARGET_qualcommax|CONFIG_LUCI_LANG_zh-cn|CONFIG_PACKAGE_luci-app-adblock|CONFIG_PACKAGE_luci-app-homeproxy" .config || echo "⚠️ 关键配置缺失"
 
           make defconfig
 
-          echo "=== 第一次 defconfig 后验证 ==="
-          grep "CONFIG_TARGET_qualcommax" .config || echo "被覆盖了"
-
-          # 强制把目标写回
+          # 防止 defconfig 覆盖目标配置
           grep -v "^CONFIG_TARGET_" .config > .config.tmp
           {
             echo "CONFIG_TARGET_qualcommax=y"
@@ -167,16 +181,9 @@ jobs:
             echo "CONFIG_TARGET_qualcommax_ipq60xx_DEVICE_qihoo_360v6=y"
           } >> .config.tmp
           mv .config.tmp .config
-
-          # 再跑一次 defconfig 让其他依赖基于正确目标展开
           make defconfig
 
-          echo "=== 最终验证 ==="
-          grep "CONFIG_TARGET_qualcommax" .config || echo "⚠️ 未找到 qualcommax 目标配置"
-          grep "CONFIG_TARGET_qualcommax_ipq60xx_DEVICE_qihoo_360v6" .config || echo "⚠️ 未找到 360V6 设备配置"
-          grep "CONFIG_TARGET_BOARD" .config || echo "⚠️ 未找到 BOARD 配置"
-
-      - name: ⬇️ 下载编译所需软件包
+      - name: ⬇️ 下载软件包
         run: |
           cd openwrt
           make download -j$(nproc)
@@ -186,9 +193,8 @@ jobs:
         id: compile
         run: |
           cd openwrt
-          echo "🔨 开始编译，使用 $(nproc) 线程..."
+          echo "🔨 开始编译，$(nproc) 线程..."
           make -j$(nproc) V=s 2>&1 | tee build.log
-
           if [ ${PIPESTATUS[0]} -eq 0 ]; then
             echo "status=success" >> $GITHUB_OUTPUT
             echo "✅ 编译成功！"
@@ -199,16 +205,15 @@ jobs:
             exit 1
           fi
 
-      - name: 📦 整理固件文件
+      - name: 📦 整理固件
         if: steps.compile.outputs.status == 'success'
         run: |
           cd openwrt/bin/targets/*/*
           rm -rf packages
           echo "FIRMWARE_PATH=$PWD" >> $GITHUB_ENV
-          echo "=== 固件文件列表 ==="
           ls -lh
 
-      - name: 📤 上传固件到 Artifacts
+      - name: 📤 上传 Artifacts
         if: steps.compile.outputs.status == 'success'
         uses: actions/upload-artifact@v4
         with:
@@ -219,7 +224,7 @@ jobs:
             ${{ env.FIRMWARE_PATH }}/*.tar
           retention-days: 7
 
-      - name: 🚀 发布到 Release
+      - name: 🚀 发布 Release
         if: steps.compile.outputs.status == 'success'
         uses: softprops/action-gh-release@v2
         with:
@@ -229,25 +234,31 @@ jobs:
             ${{ env.FIRMWARE_PATH }}/*.itb
           body: |
             ## OpenWrt for 360 V6 (Qualcomm IPQ60xx)
-            - 分支: ${{ env.REPO_BRANCH }}
+            - 分支: ${{ env.REPO_BRANCH }}（✅ 稳定版）
             - 源码 Commit: ${{ env.OPENWRT_COMMIT }}
             - 构建编号: ${{ github.run_number }}
             - 构建日期: ${{ env.BUILD_DATE }}
 
-            ### 内置插件
-            - homeproxy（科学上网）
-            - ttyd（网页终端）
-            - Argon 主题
+            ### ✨ 内置功能
+            - 🌐 默认简体中文界面
+            - 🛡️ Adblock 去广告（轻量级，规则每日自动更新）
+            - 🧭 HomeProxy + Sing-Box（科学上网）
+            - 🖨️ P910nd 打印机共享（支持 Canon MF4400 等）
+            - 💻 TTYD 网页终端
+            - 🎨 Argon 主题
+
+            ### 📦 刷机文件
+            - `*.ubi`：NAND 闪存刷写
+            - `*.itb`：U-Boot/FIT 镜像
           draft: false
           prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: 📋 上传编译日志（始终执行）
+      - name: 📋 上传日志
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: build-log-${{ github.run_number }}
           path: openwrt/build.log
           retention-days: 3
-          if-no-files-found: ignore
