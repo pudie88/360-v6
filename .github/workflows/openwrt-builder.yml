@@ -1,5 +1,4 @@
 name: Build OpenWrt for 360 V6
-
 on:
   workflow_dispatch:
   push:
@@ -26,21 +25,15 @@ jobs:
 
       - name: 🗑️ Free Disk Space
         run: |
-          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc \
-            /opt/hostedtoolcache/CodeQL /usr/local/share/boost \
-            /usr/share/swift /usr/local/.ghcup /usr/lib/jvm
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL /usr/local/share/boost /usr/share/swift /usr/local/.ghcup /usr/lib/jvm
           sudo docker rmi $(docker images -q) 2>/dev/null || true
           sudo apt-get autoremove -y --purge && sudo apt-get clean
           sudo swapoff -a && sudo rm -f /swapfile /mnt/swapfile
-          df -h
 
       - name: 🛠️ Install Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y \
-            build-essential clang flex bison g++ gawk gcc-multilib g++-multilib \
-            gettext git libncurses5-dev libssl-dev python3 python3-pip rsync \
-            swig unzip zlib1g-dev wget curl ca-certificates file
+          sudo apt-get install -y build-essential clang flex bison g++ gawk gcc-multilib g++-multilib gettext git libncurses5-dev libssl-dev python3 python3-pip rsync swig unzip zlib1g-dev wget curl ca-certificates file
 
       - name: 📥 Clone Source
         run: |
@@ -53,10 +46,8 @@ jobs:
         run: |
           cd openwrt
           rm -rf package/luci-theme-argon package/homeproxy
-          git clone --depth 1 --branch master --single-branch \
-            https://github.com/jerrykuku/luci-theme-argon.git package/luci-theme-argon
-          git clone --depth 1 --branch master --single-branch \
-            https://github.com/immortalwrt/homeproxy.git package/homeproxy
+          git clone --depth 1 https://github.com/jerrykuku/luci-theme-argon.git package/luci-theme-argon
+          git clone --depth 1 https://github.com/immortalwrt/homeproxy.git package/homeproxy
 
       - name: 🔄 Update & Install Feeds
         run: |
@@ -64,43 +55,45 @@ jobs:
           ./scripts/feeds update -a
           ./scripts/feeds install -a
 
-      - name: ⚙️ Apply Config & Fix Kconfig Conflicts (仅一次 defconfig)
+      - name: ⚙️ Apply Config & Hard-Lock Device
         run: |
           cd openwrt
-
-          # 🔧 1. 根除 sing-box-tiny choice 循环依赖
-          # 直接从 feeds Makefile 中删除 tiny 变体定义，彻底破坏 choice 块
-          SINGBOX_MK=$(find feeds -name "Makefile" -path "*/net/sing-box/*" | head -1)
-          if [ -f "$SINGBOX_MK" ]; then
-            sed -i '/^define Package\/sing-box-tiny$/,/^endef$/d' "$SINGBOX_MK"
-            echo "✅ 已彻底移除 sing-box-tiny 变体，解除 choice 互斥死锁"
-          fi
-
-          # 🔧 2. 写入完整配置（仓库 .config + 强制设备锁定行）
-          # 将目标配置追加到文件末尾，确保 defconfig 解析时优先级最高
+          
+          # 1. 彻底删除 sing-box-tiny 冲突项
+          find feeds -name "Makefile" -path "*/net/sing-box/*" | xargs sed -i '/define Package\/sing-box-tiny/,/endef/d'
+          
+          # 2. 载入基础配置
           cp ../.config .config
-          cat >> .config << 'CFGEOF'
-          # === 强制设备选择 (防止 defconfig 回退到默认 ath79) ===
-          CONFIG_TARGET_MULTI_PROFILE=n
-          CONFIG_TARGET_DEVICE="qihoo_360v6"
-          CONFIG_TARGET_qualcommax=y
-          CONFIG_TARGET_qualcommax_ipq60xx=y
-          CONFIG_TARGET_qualcommax_ipq60xx_DEVICE_qihoo_360v6=y
-          # === sing-box 显式指定 (此时 tiny 已删除，不再冲突) ===
-          CONFIG_PACKAGE_sing-box=y
-          CFGEOF
-
-          # 🔧 3. 仅执行一次 make defconfig
-          echo "🔄 执行 make defconfig (仅此一次)..."
-          make defconfig 2>&1 | grep -E "^(override|WARNING|error)" || true
-
-          # 🔧 4. 最终校验
+          
+          # 3. 【关键】清除所有已存在的设备选择，防止 Kconfig 冲突导致回退到 mango-dvk
+          sed -i '/CONFIG_TARGET_.*_DEVICE_.*/d' .config
+          
+          # 4. 使用 scripts/config 强制注入设备链 (从大到小)
+          ./scripts/config --set-val CONFIG_TARGET_qualcommax y
+          ./scripts/config --set-val CONFIG_TARGET_qualcommax_ipq60xx y
+          ./scripts/config --set-val CONFIG_TARGET_qualcommax_ipq60xx_DEVICE_qihoo_360v6 y
+          
+          # 5. 锁定 HomeProxy 依赖
+          ./scripts/config --set-val CONFIG_PACKAGE_sing-box y
+          ./scripts/config --set-val CONFIG_PACKAGE_sing-box-tiny n
+          
+          # 6. 执行 olddefconfig 补全依赖 (此时设备已在 .config 中唯一，不会被重置)
+          make olddefconfig
+          
+          # 7. 最终暴力校验：如果还是被改了，直接强行覆盖 .config
           if ! grep -q "CONFIG_TARGET_qualcommax_ipq60xx_DEVICE_qihoo_360v6=y" .config; then
-            echo "❌ 目标设备丢失！当前配置："
-            grep "CONFIG_TARGET_" .config | grep "=y" || echo "(无)"
+            echo "❌ 警告：设备再次被重置！尝试强制覆盖..."
+            echo "CONFIG_TARGET_qualcommax_ipq60xx_DEVICE_qihoo_360v6=y" >> .config
+          fi
+          
+          # 打印结果以供检查
+          echo "--- Final Target Configuration ---"
+          grep "CONFIG_TARGET_.*_DEVICE_" .config
+          
+          if ! grep -q "CONFIG_TARGET_qualcommax_ipq60xx_DEVICE_qihoo_360v6=y" .config; then
+            echo "❌ 致命错误：目标设备锁定彻底失败！"
             exit 1
           fi
-          echo "✅ Kconfig 冲突已彻底解决，配置 100% 锁定"
 
       - name: ⬇️ Download Feeds & Packages
         run: |
@@ -112,11 +105,10 @@ jobs:
         id: compile
         run: |
           cd openwrt
-          echo "🔨 开始编译 ($(nproc) 线程)..."
           if make -j$(nproc) V=s 2>&1 | tee build.log; then
             echo "status=success" >> $GITHUB_OUTPUT
           else
-            echo "⚠️ 多线程失败，降级单线程..."
+            echo "⚠️ 多线程失败，尝试单线程..."
             if make -j1 V=s 2>&1 | tee -a build.log; then
               echo "status=success" >> $GITHUB_OUTPUT
             else
@@ -128,17 +120,11 @@ jobs:
       - name: 📦 Prepare Artifacts
         if: steps.compile.outputs.status == 'success'
         run: |
-          TARGET_DIR=$(find openwrt/bin/targets -mindepth 2 -maxdepth 2 -type d | head -1)
+          TARGET_DIR=$(find openwrt/bin/targets/qualcommax/ipq60xx -maxdepth 1 -type d | head -1)
           mkdir -p "$TARGET_DIR/output"
           cd "$TARGET_DIR"
           cp *qihoo_360v6* output/ 2>/dev/null || true
           cp sha256sums output/ 2>/dev/null || true
-          if [ -z "$(ls output/ 2>/dev/null)" ]; then
-            echo "❌ 未找到 360 V6 固件！"
-            exit 1
-          fi
-          echo "✅ 固件文件："
-          ls -lh output/
           echo "FIRMWARE_PATH=$PWD/output" >> $GITHUB_ENV
 
       - name: 🚀 Upload to Release
@@ -152,15 +138,7 @@ jobs:
             - **版本**: OpenWrt 24.10 (Stable)
             - **构建时间**: ${{ env.BUILD_DATE }}
             - **源码 Commit**: ${{ env.OPENWRT_COMMIT }}
-
-            ### ✨ 已内置
-            - ✅ 中文界面 + Argon 主题
-            - ✅ HomeProxy + sing-box (已根除 choice 冲突)
-            - ✅ ttyd 网页终端
-            - ✅ USB 3.0 驱动 + ath11k 无线
           files: ${{ env.FIRMWARE_PATH }}/*
-          draft: false
-          prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -170,4 +148,3 @@ jobs:
         with:
           name: build-log-${{ github.run_number }}
           path: openwrt/build.log
-          retention-days: 7
