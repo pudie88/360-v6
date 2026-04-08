@@ -48,3 +48,19 @@ opkg install luci-app-autoreboot
 
 # 动态 DNS (阿里/腾讯/Cloudflare)：外网访问路由器的必备神器
 opkg install luci-app-ddns ddns-scripts_aliyun ddns-scripts_dnspod ddns-scripts_cloudflare
+# 文件管理器：在网页端直接上传、下载、修改 U 盘文件
+opkg install luci-app-fileassistant
+
+# 网络共享 (Samba4)：让电视、电脑直接访问 U 盘里的电影
+opkg install luci-app-samba4
+# UPnP：优化游戏机 (PS5/Switch) NAT 类型，提升联机成功率
+opkg install luci-app-upnp
+
+# SQM 流量管理：多人抢网时保证游戏延迟依然稳定 (防止 Bufferbloat)
+opkg install luci-app-sqm
+⚠️ 注意事项
+首次刷入：请确保您已通过 SSH 开启了 360 V6 的原厂权限并刷入了兼容的 Bootloader。
+
+分区扩容：本固件默认分区表适配官方布局。如需利用剩余闪存空间，请在刷入后通过 Diskman 挂载或自行调整分区。
+
+打印机配置：使用 p910nd 时，请务必在 Windows 端打印机属性中取消勾选“启用双向支持”，否则可能无法正常打印。
