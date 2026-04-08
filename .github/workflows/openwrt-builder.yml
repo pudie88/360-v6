@@ -58,7 +58,7 @@ jobs:
           git clone --depth 1 --branch master --single-branch \
             https://github.com/jerrykuku/luci-theme-argon.git package/luci-theme-argon
 
-          # HomeProxy（分支与 openwrt-24.10 对齐）
+          # HomeProxy ✅ 只有 master 分支
           rm -rf package/homeproxy
           git clone --depth 1 --branch master --single-branch \
             https://github.com/immortalwrt/homeproxy.git package/homeproxy
@@ -72,24 +72,22 @@ jobs:
       - name: ⚙️ Apply .config
         run: |
           cd openwrt
-          # 直接使用仓库中的 .config，不在 workflow 里硬编码配置
-          cp ../.config .config
-          make defconfig
+          cp $GITHUB_WORKSPACE/.config .config
+          make defconfig 2>&1 | grep -E "^(ERROR|error)" || true
 
           # 验证目标设备未被 defconfig 重置
           if ! grep -q "CONFIG_TARGET_qualcommax_ipq60xx_DEVICE_qihoo_360v6=y" .config; then
-            echo "❌ 目标设备配置丢失，终止编译"
+            echo "❌ 目标设备配置丢失，.config 内容如下："
+            grep "CONFIG_TARGET_" .config | grep "=y" || echo "（无目标配置）"
             exit 1
           fi
           echo "✅ 目标设备锁定成功"
-          echo "📋 目标验证："
           grep "CONFIG_TARGET_" .config | grep "=y"
 
       - name: ⬇️ Download Feeds & Packages
         run: |
           cd openwrt
           make download -j$(nproc)
-          # 删除下载不完整的文件（小于 1KB）
           find dl -size -1024c -exec rm -f {} \;
 
       - name: 🔨 Compile Firmware
@@ -101,7 +99,7 @@ jobs:
             echo "status=success" >> $GITHUB_OUTPUT
             echo "✅ 编译成功！"
           else
-            echo "⚠️ 多线程编译失败，尝试单线程以获取详细错误..."
+            echo "⚠️ 多线程失败，降级单线程重试..."
             if make -j1 V=s 2>&1 | tee -a build.log; then
               echo "status=success" >> $GITHUB_OUTPUT
               echo "✅ 单线程编译成功！"
@@ -118,10 +116,8 @@ jobs:
           TARGET_DIR=$(find openwrt/bin/targets -mindepth 2 -maxdepth 2 -type d | head -1)
           mkdir -p "$TARGET_DIR/output"
           cd "$TARGET_DIR"
-          # 优先复制 360v6 专属文件，其次是通用 factory/sysupgrade
           cp *qihoo_360v6* output/ 2>/dev/null || true
           cp sha256sums output/ 2>/dev/null || true
-          # 如果没找到专属文件则报警
           if [ -z "$(ls output/ 2>/dev/null)" ]; then
             echo "❌ 未找到 360 V6 固件文件！"
             ls -la
