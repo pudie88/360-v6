@@ -56,17 +56,6 @@ jobs:
           git clone --depth 1 https://github.com/jerrykuku/luci-theme-argon.git package/luci-theme-argon
           git clone --depth 1 https://github.com/immortalwrt/homeproxy.git package/homeproxy
           
-      - name: 🔍 Debug 设备文件位置
-        run: |
-          echo "=== qualcommax 下所有非patch文件 ==="
-          find openwrt/target/linux/qualcommax -type f -not -path "*/patches*" | sort
-
-          echo "=== 所有包含 360v6 或 mango 的文件 ==="
-          grep -r "360v6\|mango-dvk\|qihoo" openwrt/target/linux/qualcommax/ --include="*.mk" --include="*.in" -l 2>/dev/null
-
-          echo "=== feeds 里的设备定义 ==="
-          grep -r "360v6\|mango-dvk\|qihoo" openwrt/target/ -l 2>/dev/null | head -20
-
       - name: ⚙️ Apply Config
         run: |
           cd openwrt
@@ -78,45 +67,41 @@ jobs:
             sed -i '/BuildPackage,sing-box-tiny/d' "$SINGBOX_MK"
             echo "✅ 已移除 sing-box-tiny"
           fi
-         
-          # 2. 写入种子配置
-          printf 'CONFIG_TARGET_qualcommax=y\n' > .config
-          printf 'CONFIG_TARGET_qualcommax_ipq60xx=y\n' >> .config
-          printf 'CONFIG_TARGET_qualcommax_ipq60xx_DEVICE_qihoo_360v6=y\n' >> .config
-          printf 'CONFIG_TARGET_qualcommax_ipq60xx_DEVICE_8devices_mango-dvk=n\n' >> .config
 
-          # 3. 验证写入
-          echo "--- 种子 .config 内容 ---"
-          cat .config
+          # 2. 完全不用 defconfig
+          #    直接把仓库 .config 复制过来，它已经包含了所有正确配置
+          cp "${GITHUB_WORKSPACE}/.config" .config
 
-          # 3. 验证写入是否正确（关键调试步骤）
-          echo "--- 种子 .config 内容 ---"
-          cat .config
+          # 3. 强制删除所有 DEVICE 行后重新写入，防止残留
+          sed -i '/CONFIG_TARGET_.*DEVICE.*/d' .config
 
-          # 4. 第一次 defconfig，锁定设备依赖
-          make defconfig 2>&1 | tail -5
+          # 4. 在文件开头插入设备锁定（开头优先级高于末尾）
+          sed -i '1s/^/CONFIG_TARGET_qualcommax_ipq60xx_DEVICE_qihoo_360v6=y\n/' .config
 
-          # 5. 校验设备锁定
-          if ! grep -q "^CONFIG_TARGET_qualcommax_ipq60xx_DEVICE_qihoo_360v6=y" .config; then
-            echo "❌ 第一次 defconfig 后设备未锁定"
-            grep "CONFIG_TARGET_.*_DEVICE_.*=y" .config || echo "（无设备被选中）"
+          # 5. 校验
+          if grep -q "^CONFIG_TARGET_qualcommax_ipq60xx_DEVICE_qihoo_360v6=y" .config; then
+            echo "✅ 设备写入成功"
+          else
+            echo "❌ 写入失败"
             exit 1
           fi
-          echo "✅ 设备锁定成功"
 
-          # 6. 追加包配置（跳过 TARGET 行）
-          grep -v "^CONFIG_TARGET_" "${GITHUB_WORKSPACE}/.config" >> .config
-
-          # 7. 第二次 defconfig，处理包依赖
-          make defconfig 2>&1 | tail -5
-
-          # 8. 最终校验
-          if grep -q "^CONFIG_TARGET_qualcommax_ipq60xx_DEVICE_qihoo_360v6=y" .config; then
-            echo "✅ 目标设备最终确认：qihoo_360v6"
+      - name: 🔨 Compile Firmware
+        id: compile
+        run: |
+          cd openwrt
+          # 关键：通过 make 的 PROFILE 参数强制指定设备，完全绕过 Kconfig
+          echo "🔨 开始编译..."
+          if make -j$(nproc) PROFILE=qihoo_360v6 2>&1 | tee build.log; then
+            echo "status=success" >> $GITHUB_OUTPUT
           else
-            echo "❌ 设备在第二次 defconfig 后被覆盖"
-            grep "CONFIG_TARGET_.*_DEVICE_.*=y" .config
-            exit 1
+            echo "⚠️ 多线程失败，降级单线程..."
+            if make -j1 V=s PROFILE=qihoo_360v6 2>&1 | tee -a build.log; then
+              echo "status=success" >> $GITHUB_OUTPUT
+            else
+              echo "status=failure" >> $GITHUB_OUTPUT
+              exit 1
+            fi
           fi
 
       - name: ⬇️ Download Packages
