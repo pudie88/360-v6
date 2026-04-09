@@ -74,11 +74,12 @@ jobs:
             echo "✅ 已移除 sing-box-tiny"
           fi
 
-          # 2. 从 TARGET_DEVICES 列表中删除 mango-dvk
+          # 2. 清空 TARGET_DEVICES，只保留 qihoo_360v6 且放在第一位
           MK="target/linux/qualcommax/image/ipq60xx.mk"
-          sed -i 's/TARGET_DEVICES += 8devices_mango-dvk//' "$MK"
+          sed -i '/^TARGET_DEVICES +=/d' "$MK"
+          echo 'TARGET_DEVICES += qihoo_360v6' >> "$MK"
           echo "=== 修改后 TARGET_DEVICES ==="
-          grep "TARGET_DEVICES" "$MK" | head -20
+          grep "TARGET_DEVICES" "$MK"
 
           # 3. 复制仓库配置，删除旧 DEVICE 行，插入目标设备
           cp "${GITHUB_WORKSPACE}/.config" .config
