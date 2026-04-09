@@ -74,14 +74,14 @@ jobs:
             echo "✅ 已移除 sing-box-tiny"
           fi
 
-          # 2. 清空 TARGET_DEVICES，只保留 qihoo_360v6 且放在第一位
+          # 2. 清空 TARGET_DEVICES，只保留 qihoo_360v6
           MK="target/linux/qualcommax/image/ipq60xx.mk"
           sed -i '/^TARGET_DEVICES +=/d' "$MK"
           echo 'TARGET_DEVICES += qihoo_360v6' >> "$MK"
           echo "=== 修改后 TARGET_DEVICES ==="
           grep "TARGET_DEVICES" "$MK"
 
-          # 3. 复制仓库配置，删除旧 DEVICE 行，插入目标设备
+          # 3. 复制配置 + 锁定设备
           cp "${GITHUB_WORKSPACE}/.config" .config
           sed -i '/CONFIG_TARGET_.*DEVICE.*/d' .config
           sed -i '1s/^/CONFIG_TARGET_qualcommax_ipq60xx_DEVICE_qihoo_360v6=y\n/' .config
@@ -95,8 +95,6 @@ jobs:
           else
             echo "❌ 失败，实际选中："
             grep "CONFIG_TARGET_.*DEVICE.*=y" .config
-            echo "=== mk 文件 mango 相关行（修改后）==="
-            grep -n "mango\|DEFAULT\|default" "$MK" | head -20
             exit 1
           fi
 
@@ -110,17 +108,14 @@ jobs:
         id: compile
         run: |
           cd openwrt
-          echo "🔨 开始编译 ($(nproc) 线程)..."
-          if make -j$(nproc) PROFILE=qihoo_360v6 2>&1 | tee build.log; then
+          echo "🔨 开始编译..."
+          if make -j$(nproc) 2>&1 | tee build.log; then
             echo "status=success" >> $GITHUB_OUTPUT
           else
             echo "⚠️ 多线程失败，降级单线程..."
-            if make -j1 V=s PROFILE=qihoo_360v6 2>&1 | tee -a build.log; then
-              echo "status=success" >> $GITHUB_OUTPUT
-            else
-              echo "status=failure" >> $GITHUB_OUTPUT
-              exit 1
-            fi
+            make -j1 V=s 2>&1 | tee -a build.log || true
+            echo "status=failure" >> $GITHUB_OUTPUT
+            exit 1
           fi
 
       - name: 📦 Prepare Artifacts
@@ -128,24 +123,20 @@ jobs:
         run: |
           TARGET_DIR="openwrt/bin/targets/qualcommax/ipq60xx"
           if [ ! -d "$TARGET_DIR" ]; then
-            echo "❌ 目标目录不存在，实际输出："
+            echo "❌ 目标目录不存在"
             find openwrt/bin/targets -type d -maxdepth 3
             exit 1
           fi
-
           cd "$TARGET_DIR"
           echo "📂 输出文件列表："
           ls -lh
-
           mkdir -p output
           cp *360v6* output/ 2>/dev/null || true
           cp sha256sums output/ 2>/dev/null || true
-
           if ! ls output/*360v6* >/dev/null 2>&1; then
-            echo "❌ 未找到 360 V6 固件，请检查编译日志"
+            echo "❌ 未找到 360 V6 固件"
             exit 1
           fi
-
           echo "✅ 固件验证通过"
           ls -lh output/
           echo "FIRMWARE_PATH=$PWD/output" >> $GITHUB_ENV
@@ -173,7 +164,13 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: 📋 Upload Build Log
+      - name: 📋 Show Build Log Tail
+        if: always()
+        run: |
+          echo "=== 编译日志最后 100 行 ==="
+          tail -100 openwrt/build.log 2>/dev/null || echo "(无日志)"
+
+      - name: 📋 Upload Build Log Artifact
         if: always()
         uses: actions/upload-artifact@v4
         with:
