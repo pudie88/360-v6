@@ -60,34 +60,20 @@ jobs:
         run: |
           cd openwrt
 
-          # 1. 精准删除 sing-box-tiny（Python 按行解析）
+          # 1. 彻底删除 sing-box-tiny (使用 sed/awk 避开 YAML heredoc 缩进陷阱)
           SINGBOX_MK="$(find feeds -name 'Makefile' -path '*/net/sing-box/*' | head -1)"
           if [ -n "$SINGBOX_MK" ]; then
-            python3 - "$SINGBOX_MK" <<'PYEOF'
-            import sys
-            path = sys.argv[1]
-            with open(path, "r") as f:
-                lines = f.readlines()
-            new_lines, skip = [], False
-            for line in lines:
-                if line.strip().startswith("define Package/sing-box-tiny"):
-                    skip = True
-                    continue
-                if skip and line.strip() == "endef":
-                    skip = False
-                    continue
-                if not skip and "BuildPackage,sing-box-tiny" not in line:
-                    new_lines.append(line)
-            with open(path, "w") as f:
-                f.writelines(new_lines)
-            print(f"✅ Patched: {path}")
-            PYEOF
+            # 删除 define 到 endef 整个代码块
+            sed -i '/define Package\/sing-box-tiny/,/^[[:space:]]*endef$/d' "$SINGBOX_MK"
+            # 删除对应的 BuildPackage 调用
+            sed -i '/BuildPackage,sing-box-tiny/d' "$SINGBOX_MK"
+            echo "✅ 已移除 sing-box-tiny，解除 choice 互斥"
           fi
 
           # 2. 载入仓库配置
           cp $GITHUB_WORKSPACE/.config .config
 
-          # 3. 生成基础配置（此时可能选中默认设备，没关系）
+          # 3. 生成完整依赖树（此时可能选中默认设备，正常）
           make defconfig 2>&1 | grep -iE "error|warning" || true
 
           # 4. 【核心】暴力覆盖设备选择行（绕过 Kconfig choice 重置机制）
