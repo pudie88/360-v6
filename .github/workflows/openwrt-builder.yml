@@ -71,30 +71,31 @@ jobs:
           # 2. 载入仓库配置
           cp $GITHUB_WORKSPACE/.config .config
 
-          # 3. 第一次 defconfig：生成完整依赖树
+          # 3. 第一次 defconfig 生成依赖树
           make defconfig >/dev/null 2>&1
 
-          # 4. 【核心】彻底清除所有设备/Profile 行
+          # 4. 彻底清除旧设备/Profile 行
           sed -i '/^CONFIG_TARGET_MULTI_PROFILE/d' .config
           sed -i '/^CONFIG_TARGET_DEVICE="/d' .config
           sed -i '/^CONFIG_TARGET_DEVICE_OPT="/d' .config
           sed -i '/^CONFIG_TARGET_DEVICE_PACKAGES_/d' .config
           sed -i '/^CONFIG_TARGET_.*_DEVICE_.*/d' .config
 
-          # 5. 逐行注入设备配置 (避开 YAML heredoc 缩进陷阱)
-          echo "# === Hard-Lock Device ===" >> .config
-          echo "CONFIG_TARGET_MULTI_PROFILE=n" >> .config
-          echo "CONFIG_TARGET_DEVICE=\"qihoo_360v6\"" >> .config
-          echo "CONFIG_TARGET_DEVICE_OPT=\"qihoo_360v6\"" >> .config
-          echo "CONFIG_TARGET_qualcommax=y" >> .config
-          echo "CONFIG_TARGET_qualcommax_ipq60xx=y" >> .config
-          echo "CONFIG_TARGET_qualcommax_ipq60xx_DEVICE_qihoo_360v6=y" >> .config
-          echo "CONFIG_TARGET_DEVICE_PACKAGES_qihoo_360v6=\"\"" >> .config
+          # 5. 安全注入设备配置 (使用单引号+分组，彻底避开 YAML 转义陷阱)
+          {
+            echo 'CONFIG_TARGET_MULTI_PROFILE=n'
+            echo 'CONFIG_TARGET_DEVICE="qihoo_360v6"'
+            echo 'CONFIG_TARGET_DEVICE_OPT="qihoo_360v6"'
+            echo 'CONFIG_TARGET_qualcommax=y'
+            echo 'CONFIG_TARGET_qualcommax_ipq60xx=y'
+            echo 'CONFIG_TARGET_qualcommax_ipq60xx_DEVICE_qihoo_360v6=y'
+            echo 'CONFIG_TARGET_DEVICE_PACKAGES_qihoo_360v6=""'
+          } >> .config
 
-          # 6. olddefconfig 补全依赖 (严格保留末尾 =y，绝不重置 choice)
+          # 6. olddefconfig 锁定 (严格保留末尾 =y)
           make olddefconfig >/dev/null 2>&1
 
-          # 7. 最终严格校验
+          # 7. 最终校验
           if grep -q "CONFIG_TARGET_qualcommax_ipq60xx_DEVICE_qihoo_360v6=y" .config; then
             echo "✅ 目标设备 100% 锁定：qihoo_360v6"
           else
