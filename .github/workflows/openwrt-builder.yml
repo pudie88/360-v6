@@ -55,6 +55,10 @@ jobs:
           rm -rf package/luci-theme-argon package/homeproxy
           git clone --depth 1 https://github.com/jerrykuku/luci-theme-argon.git package/luci-theme-argon
           git clone --depth 1 https://github.com/immortalwrt/homeproxy.git package/homeproxy
+          
+      - name: 🔍 Debug Config.in
+        run: |
+          grep -n "default y\|mango-dvk\|360v6" openwrt/target/linux/qualcommax/ipq60xx/Config.in | head -40
 
       - name: ⚙️ Apply Config
         run: |
