@@ -74,23 +74,21 @@ jobs:
             echo "✅ 已移除 sing-box-tiny"
           fi
 
-          # 2. 直接看 ipq60xx.mk 里 mango-dvk 的定义，找到 default 标记并删除
+          # 2. 从 TARGET_DEVICES 列表中删除 mango-dvk
           MK="target/linux/qualcommax/image/ipq60xx.mk"
-          echo "=== mango-dvk 相关行 ==="
-          grep -n "mango\|DEFAULT\|default" "$MK" | head -20
+          sed -i 's/TARGET_DEVICES += 8devices_mango-dvk//' "$MK"
+          echo "=== 修改后 TARGET_DEVICES ==="
+          grep "TARGET_DEVICES" "$MK" | head -20
 
-          # 3. 删除 mango-dvk 块里的 DEFAULT := y（如果存在）
-          sed -i '/8devices_mango-dvk/,/^define Device\|^$/{/DEFAULT *:= *y/d}' "$MK"
-
-          # 4. 复制仓库配置，删除旧 DEVICE 行，插入目标设备
+          # 3. 复制仓库配置，删除旧 DEVICE 行，插入目标设备
           cp "${GITHUB_WORKSPACE}/.config" .config
           sed -i '/CONFIG_TARGET_.*DEVICE.*/d' .config
           sed -i '1s/^/CONFIG_TARGET_qualcommax_ipq60xx_DEVICE_qihoo_360v6=y\n/' .config
 
-          # 5. 展开配置
+          # 4. 展开配置
           make defconfig 2>&1 | tail -3
 
-          # 6. 校验
+          # 5. 校验
           if grep -q "^CONFIG_TARGET_qualcommax_ipq60xx_DEVICE_qihoo_360v6=y" .config; then
             echo "✅ 设备锁定：qihoo_360v6"
           else
