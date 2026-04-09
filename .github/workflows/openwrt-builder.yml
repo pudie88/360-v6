@@ -56,9 +56,16 @@ jobs:
           git clone --depth 1 https://github.com/jerrykuku/luci-theme-argon.git package/luci-theme-argon
           git clone --depth 1 https://github.com/immortalwrt/homeproxy.git package/homeproxy
           
-      - name: 🔍 Debug Config.in
+      - name: 🔍 Debug 目录结构
         run: |
-          grep -n "default y\|mango-dvk\|360v6" openwrt/target/linux/qualcommax/ipq60xx/Config.in | head -40
+          echo "=== qualcommax 目录结构 ==="
+          find openwrt/target/linux/qualcommax -type f | sort
+
+          echo "=== 当前 .config 设备相关行 ==="
+          grep "CONFIG_TARGET" openwrt/.config | grep -v "^#"
+
+          echo "=== defconfig 之后实际选中的设备 ==="
+          grep "DEVICE" openwrt/.config | grep -v "^#"
 
       - name: ⚙️ Apply Config
         run: |
