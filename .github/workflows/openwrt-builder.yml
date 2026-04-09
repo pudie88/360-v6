@@ -1,4 +1,5 @@
 name: Build OpenWrt for 360 V6
+
 on:
   workflow_dispatch:
   push:
@@ -58,42 +59,57 @@ jobs:
       - name: ⚙️ Apply Config & Hard-Lock Device
         run: |
           cd openwrt
-          
-          # 1. 彻底删除 sing-box-tiny 冲突项
-          find feeds -name "Makefile" -path "*/net/sing-box/*" | xargs sed -i '/define Package\/sing-box-tiny/,/endef/d'
-          
-          # 2. 载入基础配置
-          cp ../.config .config
-          
-          # 3. 【关键】清除所有已存在的设备选择，防止 Kconfig 冲突导致回退到 mango-dvk
-          sed -i '/CONFIG_TARGET_.*_DEVICE_.*/d' .config
-          
-          # 4. 使用 scripts/config 强制注入设备链 (从大到小)
-          ./scripts/config --set-val CONFIG_TARGET_qualcommax y
-          ./scripts/config --set-val CONFIG_TARGET_qualcommax_ipq60xx y
-          ./scripts/config --set-val CONFIG_TARGET_qualcommax_ipq60xx_DEVICE_qihoo_360v6 y
-          
-          # 5. 锁定 HomeProxy 依赖
-          ./scripts/config --set-val CONFIG_PACKAGE_sing-box y
-          ./scripts/config --set-val CONFIG_PACKAGE_sing-box-tiny n
-          
-          # 6. 执行 olddefconfig 补全依赖 (此时设备已在 .config 中唯一，不会被重置)
-          make olddefconfig
-          
-          # 7. 最终暴力校验：如果还是被改了，直接强行覆盖 .config
-          if ! grep -q "CONFIG_TARGET_qualcommax_ipq60xx_DEVICE_qihoo_360v6=y" .config; then
-            echo "❌ 警告：设备再次被重置！尝试强制覆盖..."
-            echo "CONFIG_TARGET_qualcommax_ipq60xx_DEVICE_qihoo_360v6=y" >> .config
+
+          # 1. 精准删除 sing-box-tiny（Python 按行解析，避免正则误伤）
+          SINGBOX_MK="$(find feeds -name 'Makefile' -path '*/net/sing-box/*' | head -1)"
+          if [ -n "$SINGBOX_MK" ]; then
+            python3 - "$SINGBOX_MK" <<'PYEOF'
+          import sys
+          path = sys.argv[1]
+          with open(path, "r") as f:
+              lines = f.readlines()
+          new_lines = []
+          skip = False
+          for line in lines:
+              stripped = line.strip()
+              if stripped.startswith("define Package/sing-box-tiny"):
+                  skip = True
+                  continue
+              if skip and stripped == "endef":
+                  skip = False
+                  continue
+              if not skip and "BuildPackage,sing-box-tiny" not in line:
+                  new_lines.append(line)
+          with open(path, "w") as f:
+              f.writelines(new_lines)
+          print(f"✅ Patched: {path}")
+          PYEOF
           fi
-          
-          # 打印结果以供检查
-          echo "--- Final Target Configuration ---"
-          grep "CONFIG_TARGET_.*_DEVICE_" .config
-          
+
+          # 2. 载入仓库配置
+          cp $GITHUB_WORKSPACE/.config .config
+
+          # 3. 【防御】追加设备配置到末尾（防 defconfig 重置 choice）
+          cat >> .config << 'EOF'
+          # === Hard-Lock Device (end-of-file priority) ===
+          CONFIG_TARGET_MULTI_PROFILE=n
+          CONFIG_TARGET_DEVICE="qihoo_360v6"
+          CONFIG_TARGET_qualcommax_ipq60xx_DEVICE_qihoo_360v6=y
+          EOF
+
+          # 4. 仅执行一次 defconfig 补全依赖
+          echo "🔄 执行 make defconfig ..."
+          make defconfig 2>&1 | grep -iE "error|override.*choice" || true
+
+          # 5. 最终校验
+          echo "--- Final Device Config ---"
+          grep "CONFIG_TARGET_.*_DEVICE_" .config || echo "(none)"
+
           if ! grep -q "CONFIG_TARGET_qualcommax_ipq60xx_DEVICE_qihoo_360v6=y" .config; then
-            echo "❌ 致命错误：目标设备锁定彻底失败！"
+            echo "❌ 致命错误：目标设备锁定失败！"
             exit 1
           fi
+          echo "✅ 目标设备 100% 锁定：qihoo_360v6"
 
       - name: ⬇️ Download Feeds & Packages
         run: |
@@ -105,6 +121,7 @@ jobs:
         id: compile
         run: |
           cd openwrt
+          echo "🔨 开始编译 ($(nproc) 线程)..."
           if make -j$(nproc) V=s 2>&1 | tee build.log; then
             echo "status=success" >> $GITHUB_OUTPUT
           else
@@ -125,6 +142,12 @@ jobs:
           cd "$TARGET_DIR"
           cp *qihoo_360v6* output/ 2>/dev/null || true
           cp sha256sums output/ 2>/dev/null || true
+          if [ -z "$(ls output/ 2>/dev/null)" ]; then
+            echo "❌ 未找到 360 V6 固件文件！"
+            exit 1
+          fi
+          echo "✅ 固件文件："
+          ls -lh output/
           echo "FIRMWARE_PATH=$PWD/output" >> $GITHUB_ENV
 
       - name: 🚀 Upload to Release
@@ -138,7 +161,15 @@ jobs:
             - **版本**: OpenWrt 24.10 (Stable)
             - **构建时间**: ${{ env.BUILD_DATE }}
             - **源码 Commit**: ${{ env.OPENWRT_COMMIT }}
+
+            ### ✨ 已内置
+            - ✅ 中文界面 + Argon 主题
+            - ✅ HomeProxy + sing-box (已解决 choice 冲突)
+            - ✅ ttyd 网页终端
+            - ✅ USB 3.0 驱动 + ath11k 无线
           files: ${{ env.FIRMWARE_PATH }}/*
+          draft: false
+          prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -148,3 +179,4 @@ jobs:
         with:
           name: build-log-${{ github.run_number }}
           path: openwrt/build.log
+          retention-days: 7
