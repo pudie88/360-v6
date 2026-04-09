@@ -56,16 +56,16 @@ jobs:
           git clone --depth 1 https://github.com/jerrykuku/luci-theme-argon.git package/luci-theme-argon
           git clone --depth 1 https://github.com/immortalwrt/homeproxy.git package/homeproxy
           
-      - name: 🔍 Debug 目录结构
+      - name: 🔍 Debug 设备文件位置
         run: |
-          echo "=== qualcommax 目录结构 ==="
-          find openwrt/target/linux/qualcommax -type f | sort
+          echo "=== qualcommax 下所有非patch文件 ==="
+          find openwrt/target/linux/qualcommax -type f -not -path "*/patches*" | sort
 
-          echo "=== 当前 .config 设备相关行 ==="
-          grep "CONFIG_TARGET" openwrt/.config | grep -v "^#"
+          echo "=== 所有包含 360v6 或 mango 的文件 ==="
+          grep -r "360v6\|mango-dvk\|qihoo" openwrt/target/linux/qualcommax/ --include="*.mk" --include="*.in" -l 2>/dev/null
 
-          echo "=== defconfig 之后实际选中的设备 ==="
-          grep "DEVICE" openwrt/.config | grep -v "^#"
+          echo "=== feeds 里的设备定义 ==="
+          grep -r "360v6\|mango-dvk\|qihoo" openwrt/target/ -l 2>/dev/null | head -20
 
       - name: ⚙️ Apply Config
         run: |
