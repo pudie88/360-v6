@@ -115,20 +115,36 @@ jobs:
             fi
           fi
 
-      - name: 📦 Prepare Artifacts
+      - name: 📦 Prepare Artifacts & Verify Target
         if: steps.compile.outputs.status == 'success'
         run: |
-          TARGET_DIR=$(find openwrt/bin/targets/qualcommax/ipq60xx -maxdepth 1 -type d | head -1)
-          mkdir -p "$TARGET_DIR/output"
-          cd "$TARGET_DIR"
-          cp *qihoo_360v6* output/ 2>/dev/null || true
-          cp sha256sums output/ 2>/dev/null || true
-          if [ -z "$(ls output/ 2>/dev/null)" ]; then
-            echo "❌ 未找到 360 V6 固件文件！"
+          TARGET_DIR="openwrt/bin/targets/qualcommax/ipq60xx"
+          if [ ! -d "$TARGET_DIR" ]; then
+            echo "❌ 目标目录不存在，实际输出路径："
+            find openwrt/bin/targets -type d -maxdepth 2
             exit 1
           fi
-          echo "✅ 固件文件："
+          cd "$TARGET_DIR"
+          
+          echo "📂 编译输出目录完整内容:"
+          ls -lh
+          
+          mkdir -p output
+          cp *qihoo_360v6* output/ 2>/dev/null || true
+          cp sha256sums output/ 2>/dev/null || true
+          
+          echo "📦 待发布文件列表:"
           ls -lh output/
+          
+          # 严格验证：必须存在含 qihoo_360v6 的固件
+          if ! ls output/*qihoo_360v6* >/dev/null 2>&1; then
+            echo "❌ 致命错误：未生成 360 V6 固件！"
+            echo "💡 极大概率编译了其他设备（如 8devices_mango-dvk）"
+            echo "🔍 请向上滚动编译日志，搜索 'Target:' 或 'Current target:' 确认实际编译目标"
+            exit 1
+          fi
+          
+          echo "✅ 固件验证通过，准备上传"
           echo "FIRMWARE_PATH=$PWD/output" >> $GITHUB_ENV
 
       - name: 🚀 Upload to Release
