@@ -67,42 +67,43 @@ jobs:
             sed -i '/BuildPackage,sing-box-tiny/d' "$SINGBOX_MK"
             echo "✅ 已移除 sing-box-tiny"
           fi
+         
+          # 2. 写入种子配置
+          printf 'CONFIG_TARGET_qualcommax=y\n' > .config
+          printf 'CONFIG_TARGET_qualcommax_ipq60xx=y\n' >> .config
+          printf 'CONFIG_TARGET_qualcommax_ipq60xx_DEVICE_qihoo_360v6=y\n' >> .config
+          printf 'CONFIG_TARGET_qualcommax_ipq60xx_DEVICE_8devices_mango-dvk=n\n' >> .config
 
-          # 2. 构造种子 .config：只写 TARGET + DEVICE，让 defconfig 填充其余
-          #    关键：先只写这几行，defconfig 会以此为锚点展开，不会乱选设备
-          cat > .config << 'EOF'
-          CONFIG_TARGET_qualcommax=y
-          CONFIG_TARGET_qualcommax_ipq60xx=y
-          CONFIG_TARGET_qualcommax_ipq60xx_DEVICE_qihoo_360v6=y
-          # 明确禁用竞争设备
-          CONFIG_TARGET_qualcommax_ipq60xx_DEVICE_8devices_mango-dvk=n
-          EOF
+          # 3. 验证写入
+          echo "--- 种子 .config 内容 ---"
+          cat .config
 
-          # 3. 先跑一次 defconfig，让设备相关依赖全部展开并固化
+          # 3. 验证写入是否正确（关键调试步骤）
+          echo "--- 种子 .config 内容 ---"
+          cat .config
+
+          # 4. 第一次 defconfig，锁定设备依赖
           make defconfig 2>&1 | tail -5
 
-          # 4. 校验设备是否锁定，失败立即停止（不继续污染配置）
+          # 5. 校验设备锁定
           if ! grep -q "^CONFIG_TARGET_qualcommax_ipq60xx_DEVICE_qihoo_360v6=y" .config; then
-            echo "❌ 第一次 defconfig 后设备仍未锁定，放弃"
+            echo "❌ 第一次 defconfig 后设备未锁定"
             grep "CONFIG_TARGET_.*_DEVICE_.*=y" .config || echo "（无设备被选中）"
             exit 1
           fi
-          echo "✅ 设备锁定成功，开始合并完整配置"
+          echo "✅ 设备锁定成功"
 
-          # 5. 将仓库 .config 中的包配置追加进来（跳过 TARGET 行，避免冲突）
+          # 6. 追加包配置（跳过 TARGET 行）
           grep -v "^CONFIG_TARGET_" "${GITHUB_WORKSPACE}/.config" >> .config
 
-          # 6. 再跑一次 defconfig，处理包依赖
+          # 7. 第二次 defconfig，处理包依赖
           make defconfig 2>&1 | tail -5
 
-          # 7. 最终校验
-          echo "--- 最终 TARGET 选择 ---"
-          grep "^CONFIG_TARGET_.*_DEVICE_.*=y" .config
-
+          # 8. 最终校验
           if grep -q "^CONFIG_TARGET_qualcommax_ipq60xx_DEVICE_qihoo_360v6=y" .config; then
             echo "✅ 目标设备最终确认：qihoo_360v6"
           else
-            echo "❌ 设备在第二次 defconfig 后被覆盖，实际选中："
+            echo "❌ 设备在第二次 defconfig 后被覆盖"
             grep "CONFIG_TARGET_.*_DEVICE_.*=y" .config
             exit 1
           fi
