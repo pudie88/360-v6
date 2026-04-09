@@ -26,7 +26,9 @@ jobs:
 
       - name: 🗑️ Free Disk Space
         run: |
-          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL /usr/local/share/boost /usr/share/swift /usr/local/.ghcup /usr/lib/jvm
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc \
+            /opt/hostedtoolcache/CodeQL /usr/local/share/boost \
+            /usr/share/swift /usr/local/.ghcup /usr/lib/jvm
           sudo docker rmi $(docker images -q) 2>/dev/null || true
           sudo apt-get autoremove -y --purge && sudo apt-get clean
           sudo swapoff -a && sudo rm -f /swapfile /mnt/swapfile
@@ -34,7 +36,11 @@ jobs:
       - name: 🛠️ Install Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential clang flex bison g++ gawk gcc-multilib g++-multilib gettext git libncurses5-dev libssl-dev python3 python3-pip rsync swig unzip zlib1g-dev wget curl ca-certificates file
+          sudo apt-get install -y \
+            build-essential clang flex bison g++ gawk \
+            gcc-multilib g++-multilib gettext git \
+            libncurses5-dev libssl-dev python3 python3-pip \
+            rsync swig unzip zlib1g-dev wget curl ca-certificates file
 
       - name: 📥 Clone Source
         run: |
@@ -56,62 +62,48 @@ jobs:
           ./scripts/feeds update -a
           ./scripts/feeds install -a
 
-      - name: ⚙️ Apply Config & Hard-Lock Device
+      - name: ⚙️ Apply Config
         run: |
           cd openwrt
 
-          # 1. 移除 sing-box-tiny 冲突项
+          # 1. 移除 sing-box-tiny 冲突（防止 choice 报错）
           SINGBOX_MK="feeds/packages/net/sing-box/Makefile"
           if [ -f "$SINGBOX_MK" ]; then
-            sed -i '/define Package\/sing-box-tiny/,/endef/d' "$SINGBOX_MK"
+            sed -i '/define Package\/sing-box-tiny/,/^endef/d' "$SINGBOX_MK"
             sed -i '/BuildPackage,sing-box-tiny/d' "$SINGBOX_MK"
             echo "✅ 已移除 sing-box-tiny"
           fi
 
-          # 2. 【核弹级修复】修改 Kconfig 源码，强制 360 V6 为默认设备
-          CONFIG_IN="target/linux/qualcommax/ipq60xx/Config.in"
-          if [ -f "$CONFIG_IN" ]; then
-            # 移除 8devices 的默认标记
-            sed -i '/config TARGET_qualcommax_ipq60xx_DEVICE_8devices_mango-dvk/,/endconfig/ s/default y/default n/' "$CONFIG_IN"
-            # 为 360 V6 添加默认标记
-            if ! grep -A 3 "config TARGET_qualcommax_ipq60xx_DEVICE_qihoo_360v6" "$CONFIG_IN" | grep -q "default y"; then
-              sed -i '/config TARGET_qualcommax_ipq60xx_DEVICE_qihoo_360v6/a\\tdefault y' "$CONFIG_IN"
-            fi
-            echo "✅ 已修改 Config.in 默认设备"
-          fi
-
-          # 3. 载入仓库配置
+          # 2. 写入最终 .config
+          #    ① 先用仓库配置作为基础
           cp "${GITHUB_WORKSPACE}/.config" .config
 
-          # 4. 清除旧设备行
-          sed -i '/^CONFIG_TARGET_MULTI_PROFILE/d' .config
-          sed -i '/^CONFIG_TARGET_DEVICE="/d' .config
-          sed -i '/^CONFIG_TARGET_DEVICE_OPT="/d' .config
-          sed -i '/^CONFIG_TARGET_DEVICE_PACKAGES_/d' .config
-          sed -i '/^CONFIG_TARGET_.*_DEVICE_.*/d' .config
+          #    ② 追加/覆盖关键目标行（追加到文件末尾，make defconfig 会以最后出现的值为准）
+          cat >> .config << 'EOF'
+          CONFIG_TARGET_qualcommax=y
+          CONFIG_TARGET_qualcommax_ipq60xx=y
+          CONFIG_TARGET_qualcommax_ipq60xx_DEVICE_qihoo_360v6=y
+          # 明确关闭其他 ipq60xx 设备，防止 multi-profile
+          CONFIG_TARGET_MULTI_PROFILE=n
+          CONFIG_TARGET_qualcommax_ipq60xx_DEVICE_8devices_mango-dvk=n
+          EOF
 
-          # 5. 注入设备配置
-          echo 'CONFIG_TARGET_MULTI_PROFILE=n' >> .config
-          echo 'CONFIG_TARGET_DEVICE="qihoo_360v6"' >> .config
-          echo 'CONFIG_TARGET_DEVICE_OPT="qihoo_360v6"' >> .config
-          echo 'CONFIG_TARGET_qualcommax=y' >> .config
-          echo 'CONFIG_TARGET_qualcommax_ipq60xx=y' >> .config
-          echo 'CONFIG_TARGET_qualcommax_ipq60xx_DEVICE_qihoo_360v6=y' >> .config
-          echo 'CONFIG_TARGET_DEVICE_PACKAGES_qihoo_360v6=""' >> .config
+          # 3. 用 defconfig 填充缺失选项（不会降级已明确设置的 =y）
+          make defconfig 2>&1 | tail -5
 
-          # 6. 生成配置
-          make olddefconfig >/dev/null 2>&1 || true
+          # 4. 最终校验，失败立即中止
+          echo "--- 当前 TARGET 选择 ---"
+          grep "CONFIG_TARGET" .config | grep -v "^#"
 
-          # 7. 最终校验
-          if grep -q "CONFIG_TARGET_qualcommax_ipq60xx_DEVICE_qihoo_360v6=y" .config; then
-            echo "✅ 目标设备 100% 锁定：qihoo_360v6"
+          if grep -q "^CONFIG_TARGET_qualcommax_ipq60xx_DEVICE_qihoo_360v6=y" .config; then
+            echo "✅ 目标设备锁定：qihoo_360v6"
           else
             echo "❌ 设备锁定失败，实际选中："
-            grep "CONFIG_TARGET_.*_DEVICE_.*=y" .config
+            grep "CONFIG_TARGET_.*_DEVICE_.*=y" .config || echo "（无设备被选中）"
             exit 1
           fi
 
-      - name: ⬇️ Download Feeds & Packages
+      - name: ⬇️ Download Packages
         run: |
           cd openwrt
           make download -j$(nproc)
@@ -122,10 +114,10 @@ jobs:
         run: |
           cd openwrt
           echo "🔨 开始编译 ($(nproc) 线程)..."
-          if make -j$(nproc) V=s 2>&1 | tee build.log; then
+          if make -j$(nproc) 2>&1 | tee build.log; then
             echo "status=success" >> $GITHUB_OUTPUT
           else
-            echo "⚠️ 多线程失败，降级单线程..."
+            echo "⚠️ 多线程失败，降级单线程（附详细日志）..."
             if make -j1 V=s 2>&1 | tee -a build.log; then
               echo "status=success" >> $GITHUB_OUTPUT
             else
@@ -134,30 +126,29 @@ jobs:
             fi
           fi
 
-      - name: 📦 Prepare Artifacts & Verify Target
+      - name: 📦 Prepare Artifacts
         if: steps.compile.outputs.status == 'success'
         run: |
           TARGET_DIR="openwrt/bin/targets/qualcommax/ipq60xx"
           if [ ! -d "$TARGET_DIR" ]; then
-            echo "❌ 目标目录不存在，实际路径:"
-            find openwrt/bin/targets -type d -maxdepth 2
+            echo "❌ 目标目录不存在，实际输出："
+            find openwrt/bin/targets -type d -maxdepth 3
             exit 1
           fi
+
           cd "$TARGET_DIR"
-          
-          echo "📂 编译输出目录内容:"
+          echo "📂 输出文件列表："
           ls -lh
-          
+
           mkdir -p output
-          cp *qihoo_360v6* output/ 2>/dev/null || true
+          cp *360v6* output/ 2>/dev/null || true
           cp sha256sums output/ 2>/dev/null || true
-          
-          if ! ls output/*qihoo_360v6* >/dev/null 2>&1; then
-            echo "❌ 未生成 360 V6 固件！"
-            echo "💡 请检查上方编译日志，确认实际编译设备"
+
+          if ! ls output/*360v6* >/dev/null 2>&1; then
+            echo "❌ 未找到 360 V6 固件，请检查编译日志"
             exit 1
           fi
-          
+
           echo "✅ 固件验证通过"
           ls -lh output/
           echo "FIRMWARE_PATH=$PWD/output" >> $GITHUB_ENV
@@ -176,7 +167,7 @@ jobs:
 
             ### ✨ 已内置
             - ✅ 中文界面 + Argon 主题
-            - ✅ HomeProxy + sing-box (已解决 choice 冲突)
+            - ✅ HomeProxy + sing-box
             - ✅ ttyd 网页终端
             - ✅ USB 3.0 驱动 + ath11k 无线
           files: ${{ env.FIRMWARE_PATH }}/*
