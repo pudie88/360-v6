@@ -56,17 +56,11 @@ jobs:
           git clone --depth 1 https://github.com/jerrykuku/luci-theme-argon.git package/luci-theme-argon
           git clone --depth 1 https://github.com/immortalwrt/homeproxy.git package/homeproxy
 
-      - name: 🔄 Update & Install Feeds
-        run: |
-          cd openwrt
-          ./scripts/feeds update -a
-          ./scripts/feeds install -a
-
       - name: ⚙️ Apply Config
         run: |
           cd openwrt
 
-          # 1. 移除 sing-box-tiny 冲突（防止 choice 报错）
+          # 1. 移除 sing-box-tiny 冲突
           SINGBOX_MK="feeds/packages/net/sing-box/Makefile"
           if [ -f "$SINGBOX_MK" ]; then
             sed -i '/define Package\/sing-box-tiny/,/^endef/d' "$SINGBOX_MK"
@@ -74,32 +68,42 @@ jobs:
             echo "✅ 已移除 sing-box-tiny"
           fi
 
-          # 2. 写入最终 .config
-          #    ① 先用仓库配置作为基础
-          cp "${GITHUB_WORKSPACE}/.config" .config
-
-          #    ② 追加/覆盖关键目标行（追加到文件末尾，make defconfig 会以最后出现的值为准）
-          cat >> .config << 'EOF'
+          # 2. 构造种子 .config：只写 TARGET + DEVICE，让 defconfig 填充其余
+          #    关键：先只写这几行，defconfig 会以此为锚点展开，不会乱选设备
+          cat > .config << 'EOF'
           CONFIG_TARGET_qualcommax=y
           CONFIG_TARGET_qualcommax_ipq60xx=y
           CONFIG_TARGET_qualcommax_ipq60xx_DEVICE_qihoo_360v6=y
-          # 明确关闭其他 ipq60xx 设备，防止 multi-profile
-          CONFIG_TARGET_MULTI_PROFILE=n
+          # 明确禁用竞争设备
           CONFIG_TARGET_qualcommax_ipq60xx_DEVICE_8devices_mango-dvk=n
           EOF
 
-          # 3. 用 defconfig 填充缺失选项（不会降级已明确设置的 =y）
+          # 3. 先跑一次 defconfig，让设备相关依赖全部展开并固化
           make defconfig 2>&1 | tail -5
 
-          # 4. 最终校验，失败立即中止
-          echo "--- 当前 TARGET 选择 ---"
-          grep "CONFIG_TARGET" .config | grep -v "^#"
+          # 4. 校验设备是否锁定，失败立即停止（不继续污染配置）
+          if ! grep -q "^CONFIG_TARGET_qualcommax_ipq60xx_DEVICE_qihoo_360v6=y" .config; then
+            echo "❌ 第一次 defconfig 后设备仍未锁定，放弃"
+            grep "CONFIG_TARGET_.*_DEVICE_.*=y" .config || echo "（无设备被选中）"
+            exit 1
+          fi
+          echo "✅ 设备锁定成功，开始合并完整配置"
+
+          # 5. 将仓库 .config 中的包配置追加进来（跳过 TARGET 行，避免冲突）
+          grep -v "^CONFIG_TARGET_" "${GITHUB_WORKSPACE}/.config" >> .config
+
+          # 6. 再跑一次 defconfig，处理包依赖
+          make defconfig 2>&1 | tail -5
+
+          # 7. 最终校验
+          echo "--- 最终 TARGET 选择 ---"
+          grep "^CONFIG_TARGET_.*_DEVICE_.*=y" .config
 
           if grep -q "^CONFIG_TARGET_qualcommax_ipq60xx_DEVICE_qihoo_360v6=y" .config; then
-            echo "✅ 目标设备锁定：qihoo_360v6"
+            echo "✅ 目标设备最终确认：qihoo_360v6"
           else
-            echo "❌ 设备锁定失败，实际选中："
-            grep "CONFIG_TARGET_.*_DEVICE_.*=y" .config || echo "（无设备被选中）"
+            echo "❌ 设备在第二次 defconfig 后被覆盖，实际选中："
+            grep "CONFIG_TARGET_.*_DEVICE_.*=y" .config
             exit 1
           fi
 
