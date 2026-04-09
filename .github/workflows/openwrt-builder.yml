@@ -83,11 +83,16 @@ jobs:
           # 4. 在文件开头插入设备锁定
           sed -i '1s/^/CONFIG_TARGET_qualcommax_ipq60xx_DEVICE_qihoo_360v6=y\n/' .config
 
-          # 5. 校验
+          # 5. 关键：用 PROFILE 参数运行 defconfig，展开完整配置
+          #    PROFILE 变量让 defconfig 知道目标设备，不会再乱选
+          make defconfig PROFILE=qihoo_360v6 2>&1 | grep -v "^#" | tail -5
+
+          # 6. 校验设备没被覆盖
           if grep -q "^CONFIG_TARGET_qualcommax_ipq60xx_DEVICE_qihoo_360v6=y" .config; then
-            echo "✅ 设备写入成功"
+            echo "✅ 设备锁定确认：qihoo_360v6"
           else
-            echo "❌ 写入失败"
+            echo "❌ defconfig 后设备被覆盖，实际选中："
+            grep "CONFIG_TARGET_.*DEVICE.*=y" .config
             exit 1
           fi
 
