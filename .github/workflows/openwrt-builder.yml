@@ -60,47 +60,47 @@ jobs:
         run: |
           cd openwrt
 
-          # 1. 移除 sing-box-tiny 冲突包
+          # 1. 移除 sing-box-tiny 冲突项
           SINGBOX_MK="$(find feeds -name 'Makefile' -path '*/net/sing-box/*' | head -1)"
           if [ -n "$SINGBOX_MK" ]; then
             sed -i '/define Package\/sing-box-tiny/,/^[[:space:]]*endef$/d' "$SINGBOX_MK"
             sed -i '/BuildPackage,sing-box-tiny/d' "$SINGBOX_MK"
-            echo "✅ 已移除 sing-box-tiny，解除 choice 互斥"
+            echo "✅ 已移除 sing-box-tiny"
           fi
 
           # 2. 载入仓库配置
           cp $GITHUB_WORKSPACE/.config .config
 
-          # 3. 首次 defconfig 解析完整依赖树
-          echo "🔄 执行 make defconfig (解析依赖)..."
-          make defconfig 2>&1 | grep -iE "error|warning" || true
+          # 3. 第一次 defconfig：生成完整依赖树
+          make defconfig >/dev/null 2>&1
 
-          # 4. 【核心】彻底清除所有设备选择行，防止 Kconfig 冲突
-          sed -i '/CONFIG_TARGET_DEVICE=/d' .config
-          sed -i '/CONFIG_TARGET_MULTI_PROFILE=/d' .config
-          sed -i '/CONFIG_TARGET_.*_DEVICE_.*/d' .config
+          # 4. 暴力覆盖设备选择（清除所有旧设备行，注入唯一目标）
+          sed -i '/^CONFIG_TARGET_MULTI_PROFILE=/d' .config
+          sed -i '/^CONFIG_TARGET_DEVICE=/d' .config
+          sed -i '/^CONFIG_TARGET_DEVICE_OPT=/d' .config
+          sed -i '/^CONFIG_TARGET_DEVICE_PACKAGES_/d' .config
+          sed -i '/^CONFIG_TARGET_.*_DEVICE_.*/d' .config
 
-          # 5. 追加唯一设备配置到文件末尾（此时 .config 中无任何设备残留）
           cat >> .config << 'EOF'
-          # === Hard-Lock Device (Unique Choice) ===
+          # === Hard-Lock Device ===
           CONFIG_TARGET_MULTI_PROFILE=n
           CONFIG_TARGET_DEVICE="qihoo_360v6"
+          CONFIG_TARGET_DEVICE_OPT="qihoo_360v6"
           CONFIG_TARGET_qualcommax=y
           CONFIG_TARGET_qualcommax_ipq60xx=y
           CONFIG_TARGET_qualcommax_ipq60xx_DEVICE_qihoo_360v6=y
+          CONFIG_TARGET_DEVICE_PACKAGES_qihoo_360v6=""
           EOF
-          echo "✅ 设备配置已注入末尾"
 
-          # 6. 运行 olddefconfig (因无冲突，会直接保留末尾的唯一选项)
-          echo "🔄 执行 make olddefconfig (补全依赖)..."
-          make olddefconfig 2>&1 | grep -iE "error|warning" || true
+          # 5. 第二次 defconfig：以强制设备行为锚点重新解析依赖（关键步骤）
+          make defconfig >/dev/null 2>&1
 
-          # 7. 最终严格校验
+          # 6. 最终严格校验
           if grep -q "CONFIG_TARGET_qualcommax_ipq60xx_DEVICE_qihoo_360v6=y" .config; then
             echo "✅ 目标设备 100% 锁定：qihoo_360v6"
           else
-            echo "❌ 致命错误：设备锁定失败！当前配置:"
-            grep "CONFIG_TARGET_DEVICE\|CONFIG_TARGET_.*_DEVICE_" .config
+            echo "❌ 致命错误：设备锁定失败"
+            grep "CONFIG_TARGET_DEVICE\|CONFIG_TARGET_.*_DEVICE" .config || echo "(无)"
             exit 1
           fi
 
