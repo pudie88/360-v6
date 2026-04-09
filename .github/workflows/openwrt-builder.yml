@@ -55,7 +55,13 @@ jobs:
           rm -rf package/luci-theme-argon package/homeproxy
           git clone --depth 1 https://github.com/jerrykuku/luci-theme-argon.git package/luci-theme-argon
           git clone --depth 1 https://github.com/immortalwrt/homeproxy.git package/homeproxy
-          
+
+      - name: 🔄 Update & Install Feeds
+        run: |
+          cd openwrt
+          ./scripts/feeds update -a
+          ./scripts/feeds install -a
+
       - name: ⚙️ Apply Config
         run: |
           cd openwrt
@@ -68,14 +74,13 @@ jobs:
             echo "✅ 已移除 sing-box-tiny"
           fi
 
-          # 2. 完全不用 defconfig
-          #    直接把仓库 .config 复制过来，它已经包含了所有正确配置
+          # 2. 复制仓库配置
           cp "${GITHUB_WORKSPACE}/.config" .config
 
-          # 3. 强制删除所有 DEVICE 行后重新写入，防止残留
+          # 3. 删除所有 DEVICE 行后重新写入
           sed -i '/CONFIG_TARGET_.*DEVICE.*/d' .config
 
-          # 4. 在文件开头插入设备锁定（开头优先级高于末尾）
+          # 4. 在文件开头插入设备锁定
           sed -i '1s/^/CONFIG_TARGET_qualcommax_ipq60xx_DEVICE_qihoo_360v6=y\n/' .config
 
           # 5. 校验
@@ -84,24 +89,6 @@ jobs:
           else
             echo "❌ 写入失败"
             exit 1
-          fi
-
-      - name: 🔨 Compile Firmware
-        id: compile
-        run: |
-          cd openwrt
-          # 关键：通过 make 的 PROFILE 参数强制指定设备，完全绕过 Kconfig
-          echo "🔨 开始编译..."
-          if make -j$(nproc) PROFILE=qihoo_360v6 2>&1 | tee build.log; then
-            echo "status=success" >> $GITHUB_OUTPUT
-          else
-            echo "⚠️ 多线程失败，降级单线程..."
-            if make -j1 V=s PROFILE=qihoo_360v6 2>&1 | tee -a build.log; then
-              echo "status=success" >> $GITHUB_OUTPUT
-            else
-              echo "status=failure" >> $GITHUB_OUTPUT
-              exit 1
-            fi
           fi
 
       - name: ⬇️ Download Packages
@@ -115,11 +102,11 @@ jobs:
         run: |
           cd openwrt
           echo "🔨 开始编译 ($(nproc) 线程)..."
-          if make -j$(nproc) 2>&1 | tee build.log; then
+          if make -j$(nproc) PROFILE=qihoo_360v6 2>&1 | tee build.log; then
             echo "status=success" >> $GITHUB_OUTPUT
           else
-            echo "⚠️ 多线程失败，降级单线程（附详细日志）..."
-            if make -j1 V=s 2>&1 | tee -a build.log; then
+            echo "⚠️ 多线程失败，降级单线程..."
+            if make -j1 V=s PROFILE=qihoo_360v6 2>&1 | tee -a build.log; then
               echo "status=success" >> $GITHUB_OUTPUT
             else
               echo "status=failure" >> $GITHUB_OUTPUT
