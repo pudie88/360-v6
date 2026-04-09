@@ -108,14 +108,12 @@ jobs:
         id: compile
         run: |
           cd openwrt
-          echo "🔨 开始编译..."
-          if make -j$(nproc) 2>&1 | tee build.log; then
-            echo "status=success" >> $GITHUB_OUTPUT
-          else
-            echo "⚠️ 多线程失败，降级单线程..."
-            make -j1 V=s 2>&1 | tee -a build.log || true
+          echo "🔨 开始单线程编译（确保完整错误日志）..."
+          make -j1 V=s 2>&1 | tee build.log
+          if grep -q "target/linux failed\|Error 1\|Error 2" build.log; then
             echo "status=failure" >> $GITHUB_OUTPUT
-            exit 1
+          else
+            echo "status=success" >> $GITHUB_OUTPUT
           fi
 
       - name: 📦 Prepare Artifacts
