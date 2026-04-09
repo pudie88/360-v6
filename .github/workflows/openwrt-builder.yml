@@ -167,13 +167,11 @@ jobs:
       - name: 📋 Show Build Log Tail
         if: always()
         run: |
-          echo "=== 编译日志最后 100 行 ==="
-          tail -100 openwrt/build.log 2>/dev/null || echo "(无日志)"
-
-      - name: 📋 Upload Build Log Artifact
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: build-log-${{ github.run_number }}
-          path: openwrt/build.log
-          retention-days: 7
+          echo "=== build.log 大小 ==="
+          ls -lh openwrt/build.log 2>/dev/null || echo "build.log 不存在"
+          echo "=== 编译日志最后 150 行 ==="
+          tail -150 openwrt/build.log 2>/dev/null || echo "(无日志)"
+          echo "=== bin 目录完整内容 ==="
+          find openwrt/bin -type f | sort
+          echo "=== .config 中的设备确认 ==="
+          grep "DEVICE\|TARGET_BOARD\|TARGET_SUBTARGET" openwrt/.config | grep -v "^#"
