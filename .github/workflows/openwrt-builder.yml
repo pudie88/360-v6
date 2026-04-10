@@ -8,9 +8,9 @@ on:
       - '.github/workflows/openwrt-builder.yml'
       - '.config'
 
-env:  
+env:
   REPO_URL: https://github.com/immortalwrt/immortalwrt
-  REPO_BRANCH: openwrt-24.10
+  REPO_BRANCH: master
   TZ: Asia/Shanghai
 
 jobs:
