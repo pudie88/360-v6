@@ -8,8 +8,8 @@ on:
       - '.github/workflows/openwrt-builder.yml'
       - '.config'
 
-env:
-  REPO_URL: https://github.com/openwrt/openwrt
+env:  
+  REPO_URL: https://github.com/immortalwrt/immortalwrt
   REPO_BRANCH: openwrt-24.10
   TZ: Asia/Shanghai
 
