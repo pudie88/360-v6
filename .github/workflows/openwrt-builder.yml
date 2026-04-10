@@ -64,11 +64,11 @@ jobs:
 
       - name: 🔍 查看 360v6 设备定义
         run: |
-          echo "=== ipq60xx.mk 中 360v6 完整定义 ==="
-          grep -A 20 "360v6" openwrt/target/linux/qualcommax/image/ipq60xx.mk
+          echo "=== ipq60xx.mk 全部设备定义 ==="
+          grep "define Device\|TARGET_DEVICES" openwrt/target/linux/qualcommax/image/ipq60xx.mk
           
-          echo "=== 实际存在的 360v6 DTS 文件 ==="
-          find openwrt -name "*360*" -o -name "*qihoo*" 2>/dev/null
+          echo "=== 所有 DTS 文件 ==="
+          find openwrt/target/linux/qualcommax/files -name "*.dts" | sort
       
       - name: ⚙️ Apply Config
         run: |
