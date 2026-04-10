@@ -28,20 +28,15 @@
 
 密码：无
 
-## 使用方法
+## 固件文件说明
 
-### 触发编译
+| 文件 | 用途 |
+|------|------|
+| `*-squashfs-factory.ubi` | 从原厂固件首次刷入 |
+| `*-squashfs-sysupgrade.bin` | 已刷 ImmortalWrt 后升级使用 |
+| `*-initramfs-uImage.itb` | 内存启动，用于救砖或测试 |
+| `*.manifest` | 固件内置包列表 |
 
-- 推送代码到 `main` 或 `master` 分支时自动触发
-- 修改 `.config` 或 workflow 文件时自动触发
-- 在 Actions 页面手动点击 `Run workflow`
-
-### 下载固件
-
-编译完成后在 [Releases](../../releases) 页面下载，有两个文件：
-
-- `*-squashfs-sysupgrade.bin` — 从 OpenWrt/ImmortalWrt 刷入用
-- `*-squashfs-factory.ubi` — 从原厂固件刷入用
 
 ### 刷入方法
 
