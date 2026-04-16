@@ -21,39 +21,63 @@ uci add_list system.ntp.server='ntp.aliyun.com'
 uci add_list system.ntp.server='ntp.tencent.com'
 uci add_list system.ntp.server='cn.pool.ntp.org'
 uci commit system
-if [ -x /etc/init.d/sysntpd ]; then
-  /etc/init.d/sysntpd restart 2>/dev/null || true
-fi
+[ -x /etc/init.d/sysntpd ] && /etc/init.d/sysntpd restart 2>/dev/null || true
 
-# ── DHCP：调优 dnsmasq ───────────────────────────────────────────
+# ── DHCP：dnsmasq 监听 53，转发到 AdGuardHome 的 3053 ────────────
 uci set dhcp.@dnsmasq[0].cachesize='1000'
 uci set dhcp.@dnsmasq[0].ednspacket_max='1232'
-# AdGuardHome 运行在 3053，dnsmasq 转发到它
 uci set dhcp.@dnsmasq[0].port='53'
+uci -q delete dhcp.@dnsmasq[0].server || true
 uci add_list dhcp.@dnsmasq[0].server='127.0.0.1#3053'
 uci commit dhcp
 
-# ── CPU 超频：设为 performance governor ──────────────────────────
-# IPQ6010 cpufreq 节点，开机后写入 performance 模式
-# 若 governor 节点不存在（内核未加载）则静默跳过
-for cpu_gov in /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor; do
-  [ -f "$cpu_gov" ] && echo performance > "$cpu_gov" 2>/dev/null || true
-done
-# 通过 rc.local 持久化（uci-defaults 只跑一次，但 rc.local 每次启动都跑）
-mkdir -p /etc/rc.d
-cat > /etc/rc.local << 'EOF'
-#!/bin/sh
-# CPU performance governor (IPQ6010 超频)
-for cpu_gov in /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor; do
-  [ -f "$cpu_gov" ] && echo performance > "$cpu_gov" 2>/dev/null || true
-done
-exit 0
-EOF
-chmod +x /etc/rc.local
+# ── AdGuardHome：强制监听 3053，避免与 dnsmasq 在 53 端口冲突 ────
+AGH_CONF="/etc/adguardhome/AdGuardHome.yaml"
+if [ -f "$AGH_CONF" ]; then
+  # 将 dns.port 从默认 53 改为 3053
+  sed -i 's/^\(\s*port:\s*\)53\s*$/\13053/' "$AGH_CONF" || true
+  echo "✅ AdGuardHome DNS 端口已设为 3053"
+fi
+# 若配置文件尚未生成（首次启动前），写入一个最小配置占位
+if [ ! -f "$AGH_CONF" ]; then
+  mkdir -p /etc/adguardhome
+  cat > "$AGH_CONF" << 'AGHEOF'
+dns:
+  port: 3053
+  bootstrap_dns:
+    - 119.29.29.29
+    - 223.5.5.5
+  upstream_dns:
+    - https://doh.pub/dns-query
+    - https://dns.alidns.com/dns-query
+http:
+  address: 0.0.0.0:3000
+AGHEOF
+  echo "✅ AdGuardHome 最小配置已写入（DNS:3053, Web:3000）"
+fi
 
-# ── Docker：创建数据目录（U盘挂载后可迁移） ──────────────────────
+# ── CPU 超频：performance governor（写入 rc.local 持久化）────────
+# 先对当前会话立即生效
+for cpu_gov in /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor; do
+  [ -f "$cpu_gov" ] && echo performance > "$cpu_gov" 2>/dev/null || true
+done
+
+# FIX: 使用独立文件，不覆盖已有 rc.local 内容
+# rc.local 由其他包管理；改用 /etc/rc.d/S99-cpufreq 独立脚本
+cat > /etc/init.d/cpufreq-performance << 'EOF'
+#!/bin/sh /etc/rc.common
+START=99
+start() {
+  for g in /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor; do
+    [ -f "$g" ] && echo performance > "$g" 2>/dev/null || true
+  done
+}
+EOF
+chmod +x /etc/init.d/cpufreq-performance
+/etc/init.d/cpufreq-performance enable 2>/dev/null || true
+
+# ── Docker：数据目录 + daemon 配置 ───────────────────────────────
 mkdir -p /opt/docker
-# Docker daemon 配置：日志限制 + 数据目录
 mkdir -p /etc/docker
 cat > /etc/docker/daemon.json << 'EOF'
 {
@@ -67,7 +91,16 @@ cat > /etc/docker/daemon.json << 'EOF'
 }
 EOF
 
-# ── FileBrowser：创建工作目录 ─────────────────────────────────────
+# ── FileBrowser：工作目录 ─────────────────────────────────────────
 mkdir -p /opt/filebrowser
 
+# ── opkg：关闭签名校验 + 首次异步更新包列表 ──────────────────────
+# FIX: 此段原来在 exit 0 之后，永远不执行，现已移到这里
+uci set opkg.@opkg[0].check_signature='0' 2>/dev/null || true
+if ! grep -q "option check_signature" /etc/opkg.conf 2>/dev/null; then
+  echo "option check_signature off" >> /etc/opkg.conf
+fi
+( sleep 30 && opkg update > /tmp/opkg-update.log 2>&1 ) &
+
+# FIX: exit 0 必须在脚本最末尾，否则上方代码被截断
 exit 0
