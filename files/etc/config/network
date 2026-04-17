@@ -1,4 +1,7 @@
 # files/etc/config/network
+# 注意：此文件是编译时的占位默认值。
+# 实际接口（LAN端口/WAN口）由 uci-defaults/99-firstboot-setup.sh
+# 在设备首次启动时根据内核版本自动探测并覆盖写入。
 
 config interface 'loopback'
     option device 'lo'
@@ -12,14 +15,14 @@ config globals 'globals'
 config interface 'lan'
     option device 'br-lan'
     option proto 'static'
-    option ipaddr '192.168.2.1'
+    option ipaddr '192.168.1.1'
     option netmask '255.255.255.0'
     option ip6assign '60'
 
 config interface 'wan'
-    option device 'eth1'
+    option device 'eth4'
     option proto 'dhcp'
 
 config interface 'wan6'
-    option device 'eth1'
+    option device 'eth4'
     option proto 'dhcpv6'
