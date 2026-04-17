@@ -6,11 +6,15 @@ exec >> "$LOG" 2>&1
 echo "=== firstboot network setup: $(date) ==="
 
 # 等待网络接口就绪（最多 15 秒）
+READY=false
 for i in $(seq 1 15); do
-    ip link show eth0 >/dev/null 2>&1 && break
-    ip link show lan1 >/dev/null 2>&1 && break
+    if ip link show eth0 >/dev/null 2>&1 || ip link show lan1 >/dev/null 2>&1; then
+        READY=true
+        break
+    fi
     sleep 1
 done
+[ "$READY" = "false" ] && echo "Warning: network interfaces not ready after 15s"
 
 # 探测接口命名风格
 # 新内核（6.1/6.6）：eth0-eth3=LAN, eth4=WAN
@@ -28,55 +32,65 @@ fi
 echo "LAN: $LAN_PORTS  WAN: $WAN_IFACE"
 
 # 写入网络配置
-uci -q batch << EOF
-delete network.lan_dev
-set network.lan_dev=device
-set network.lan_dev.name=br-lan
-set network.lan_dev.type=bridge
-set network.lan=interface
-set network.lan.device=br-lan
-set network.lan.proto=static
-set network.lan.ipaddr=192.168.1.1
-set network.lan.netmask=255.255.255.0
-set network.lan.ip6assign=60
-set network.wan=interface
-set network.wan.device=${WAN_IFACE}
-set network.wan.proto=dhcp
-set network.wan6=interface
-set network.wan6.device=${WAN_IFACE}
-set network.wan6.proto=dhcpv6
-EOF
+# 使用独立 uci 命令避免 heredoc 在部分 busybox 版本下的兼容问题
+uci -q delete network.lan_dev
+uci set network.lan_dev=device
+uci set network.lan_dev.name=br-lan
+uci set network.lan_dev.type=bridge
+
+uci set network.lan=interface
+uci set network.lan.device=br-lan
+uci set network.lan.proto=static
+uci set network.lan.ipaddr=192.168.1.1
+uci set network.lan.netmask=255.255.255.0
+uci set network.lan.ip6assign=60
+
+uci set network.wan=interface
+uci set network.wan.device="$WAN_IFACE"
+uci set network.wan.proto=dhcp
+
+uci set network.wan6=interface
+uci set network.wan6.device="$WAN_IFACE"
+uci set network.wan6.proto=dhcpv6
 
 for p in $LAN_PORTS; do
-    ip link show "$p" >/dev/null 2>&1 \
-        && uci add_list network.lan_dev.ports="$p" \
-        || echo "Warning: $p not found"
+    if ip link show "$p" >/dev/null 2>&1; then
+        uci add_list network.lan_dev.ports="$p"
+    else
+        echo "Warning: interface $p not found, skipping"
+    fi
 done
 
 uci commit network || { echo "Error: network commit failed"; exit 1; }
+echo "Network config committed"
 
-# 防火墙 wan 区域（动态查找，不硬编码索引）
+# 防火墙 wan 区域（动态查找索引，不硬编码）
 WZ=""
 i=0
 while uci -q get "firewall.@zone[$i]" >/dev/null 2>&1; do
-    [ "$(uci -q get "firewall.@zone[$i].name")" = "wan" ] && WZ=$i && break
+    if [ "$(uci -q get "firewall.@zone[$i].name")" = "wan" ]; then
+        WZ=$i
+        break
+    fi
     i=$((i+1))
 done
+
 if [ -n "$WZ" ]; then
     uci -q del_list "firewall.@zone[${WZ}].network=wan6" 2>/dev/null || true
     uci -q del_list "firewall.@zone[${WZ}].network=wan"  2>/dev/null || true
     uci add_list "firewall.@zone[${WZ}].network=wan"
     uci add_list "firewall.@zone[${WZ}].network=wan6"
-    uci commit firewall
+    uci commit firewall || echo "Warning: firewall commit failed"
+    echo "Firewall wan zone updated (index $WZ)"
+else
+    echo "Warning: firewall wan zone not found"
 fi
 
 # 系统基础设置
-uci -q batch << EOF
-set system.@system[0].hostname=OpenWrt-360V6
-set system.@system[0].timezone=CST-8
-set system.@system[0].zonename=Asia/Shanghai
-EOF
-uci commit system
+uci set system.@system[0].hostname=OpenWrt-360V6
+uci set system.@system[0].timezone=CST-8
+uci set system.@system[0].zonename=Asia/Shanghai
+uci commit system || echo "Warning: system commit failed"
 
-echo "=== done ==="
+echo "=== firstboot network setup done ==="
 exit 0
