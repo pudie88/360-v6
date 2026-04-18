@@ -1,7 +1,7 @@
 # files/etc/config/network
-# 注意：此文件是编译时的占位默认值。
-# 实际接口（LAN端口/WAN口）由 uci-defaults/99-firstboot-setup.sh
-# 在设备首次启动时根据内核版本自动探测并覆盖写入。
+# 此文件是编译时默认值，uci-defaults 脚本首次启动时会按实际内核接口覆盖。
+# LAN IP 统一为 192.168.1.1，与脚本一致。
+# WAN 占位用 eth4（新内核默认），旧内核由脚本自动修正。
 
 config interface 'loopback'
     option device 'lo'
@@ -11,6 +11,14 @@ config interface 'loopback'
 
 config globals 'globals'
     option ula_prefix 'auto'
+
+config device 'lan_dev'
+    option name 'br-lan'
+    option type 'bridge'
+    list ports 'eth0'
+    list ports 'eth1'
+    list ports 'eth2'
+    list ports 'eth3'
 
 config interface 'lan'
     option device 'br-lan'
