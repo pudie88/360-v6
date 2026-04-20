@@ -287,8 +287,8 @@ jobs:
           # ── 4. 移除 sing-box-tiny 冲突 ──────────────────────────────
           SINGBOX_MK="feeds/packages/net/sing-box/Makefile"
           if [ -f "$SINGBOX_MK" ]; then
-            sed -i '/define Package\/sing-box-tiny/,/^endef/d' "$SINGBOX_MK"
-            sed -i '/BuildPackage,sing-box-tiny/d' "$SINGBOX_MK"
+            sed -i '\|define Package/sing-box-tiny|,/^endef/d' "$SINGBOX_MK"
+            sed -i '\|BuildPackage,sing-box-tiny|d' "$SINGBOX_MK"
             echo "✅ 已移除 sing-box-tiny"
           fi
 
