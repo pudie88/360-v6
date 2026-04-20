@@ -1,62 +1,70 @@
 #!/bin/sh
 # 96-install-docker
-# 在后台安装和启动 docker，不阻塞系统启动
+# 等待 USB 挂载后再安装和启动 Docker
 
 LOG_TAG="install-docker"
 DONE_FLAG="/etc/docker-install-done"
 LOG_FILE="/var/log/docker-install.log"
 
-# 已完成则跳过
 [ -f "$DONE_FLAG" ] && exit 0
 
-# 后台执行安装和启动
 nohup sh -c '
 log() {
     echo "[$(date "+%H:%M:%S")] $1" | tee -a "$LOG_FILE" | logger -t "$LOG_TAG"
 }
 
-log "开始 Docker 安装流程..."
+log "Docker 安装流程开始..."
 
-# 等待网络就绪（最多5分钟）
-log "等待网络连接..."
-for i in $(seq 1 150); do
-    ping -c 1 -W 2 223.5.5.5 >/dev/null 2>&1 && break
-    sleep 2
+# 等待 USB 挂载配置完成（94-mount-usb-docker）
+log "等待 USB 挂载配置..."
+for i in $(seq 1 60); do
+    if [ -f /etc/usb-docker-status ]; then
+        . /etc/usb-docker-status
+        if [ "$USB_DOCKER_MOUNTED" = "1" ]; then
+            log "✅ USB 已挂载: $USB_PATH"
+            log "✅ Docker 数据目录: $DOCKER_DATA"
+            break
+        fi
+    fi
+    sleep 5
 done
 
-# 更新 apk 索引
+# 如果没有 USB，警告但继续
+if [ ! -f /etc/usb-docker-status ] || [ "$USB_DOCKER_MOUNTED" != "1" ]; then
+    log "⚠️  未检测到 USB，Docker 数据将存储在 overlay（约 100MB）"
+    log "⚠️  建议插入 USB 硬盘以获得完整 Docker 功能"
+fi
+
+# 更新软件包索引
 log "更新软件包索引..."
 apk update >/dev/null 2>&1 || true
 
-# 安装 docker 包组
-log "安装 Docker 组件..."
-if apk add --no-cache dockerd docker docker-compose cgroupfs-mount 2>&1 | tee -a "$LOG_FILE"; then
-    log "✅ Docker 组件安装成功"
+# 安装 Docker（已在固件中编译，这里只是确保）
+log "验证 Docker 安装..."
+if command -v dockerd >/dev/null 2>&1; then
+    log "✅ Docker 已编译进固件"
 else
-    log "⚠️  Docker 组件安装失败"
-    exit 1
+    log "❌ Docker 未找到，尝试 apk 安装..."
+    apk add --no-cache dockerd docker docker-compose 2>&1 | tee -a "$LOG_FILE" || true
 fi
 
-# 挂载 cgroup2
-mount | grep -q cgroup2 || mount -t cgroup2 none /sys/fs/cgroup 2>/dev/null || true
-
-# 启动 docker 服务
+# 启动 Docker
 log "启动 Docker 服务..."
 service dockerd enable >/dev/null 2>&1
 if service dockerd start 2>&1 | tee -a "$LOG_FILE"; then
     sleep 5
-    if service dockerd status 2>&1 | grep -q running; then
-        log "✅ Docker 服务启动成功"
+    if docker info >/dev/null 2>&1; then
+        log "✅ Docker 启动成功"
+        log "数据目录: $(docker info 2>/dev/null | grep "Docker Root Dir" | cut -d: -f2 | tr -d " ")"
     else
-        log "⚠️  Docker 服务未运行"
+        log "⚠️  Docker 未响应"
     fi
 else
-    log "❌ Docker 服务启动失败"
+    log "❌ Docker 启动失败"
 fi
 
-# 创建完成标记
 touch "$DONE_FLAG"
-log "Docker 安装流程完成"
+log "Docker 安装完成"
 ' > "$LOG_FILE" 2>&1 &
 
 exit 0
