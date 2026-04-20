@@ -87,7 +87,129 @@ jobs:
 
       - name: ⚙️ Apply Config & Validate PARTSIZE=100
         run: |
+          # 第一步：复制 .config 到 openwrt 目录
+          cp "${GITHUB_WORKSPACE}/.config" openwrt/.config
+          
           cd openwrt
+          
+          # ── 1. 验证 PARTSIZE=100 ──────────────────────────────
+          if ! grep -q "^CONFIG_TARGET_ROOTFS_PARTSIZE=100" .config; then
+            echo "❌ 错误: PARTSIZE 不是 100，当前配置:"
+            grep "PARTSIZE" .config || echo "(未找到 PARTSIZE 配置)"
+            echo "请确保 .config 中 CONFIG_TARGET_ROOTFS_PARTSIZE=100"
+            exit 1
+          fi
+          echo "✅ PARTSIZE=100 验证通过（128MB 闪存优化）"
+
+          # ── 2. 验证大包编译设置 ────────────────────────────────
+          echo "=== 大包编译状态验证 ==="
+          for PKG in dockerd samba4-server adguardhome lucky; do
+            if grep -q "^CONFIG_PACKAGE_${PKG}=y" .config; then
+              echo "✅ $PKG = y（编译进固件）"
+            else
+              echo "❌ $PKG ≠ y，请设为 y"
+              exit 1
+            fi
+          done
+
+          # ── 3. 验证 USB 支持 ──────────────────────────────────
+          if ! grep -q "^CONFIG_PACKAGE_kmod-usb-storage=y" .config; then
+            echo "❌ USB 存储支持未启用"
+            exit 1
+          fi
+          echo "✅ USB 存储支持已启用"
+
+          # ── 4. 移除 sing-box-tiny 冲突 ──────────────────────────────
+          SINGBOX_MK="feeds/packages/net/sing-box/Makefile"
+          if [ -f "$SINGBOX_MK" ]; then
+            sed -i '/define Package\\/sing-box-tiny/,/^endef/d' "$SINGBOX_MK"
+            sed -i '/BuildPackage,sing-box-tiny/d' "$SINGBOX_MK"
+            echo "✅ 已移除 sing-box-tiny"
+          fi
+
+          # ── 5. 检查可选包 ─────────────────────────────────────
+          for PKG in luci-app-fileassistant luci-app-crontabs luci-app-cpufreq \
+                     luci-app-lucky luci-app-dockerman; do
+            if find feeds package -name "$PKG" -maxdepth 6 -type d 2>/dev/null | grep -q .; then
+              echo "✅ $PKG 存在"
+            else
+              echo "⚠️  $PKG 未找到，将由 defconfig 自动跳过"
+            fi
+          done
+
+          # ── 6. 设备锁定（只保留 qihoo_360v6）──────────────────────
+          MK="target/linux/qualcommax/image/ipq60xx.mk"
+          if [ ! -f "$MK" ]; then
+            echo "❌ 设备定义文件不存在: $MK"
+            exit 1
+          fi
+          sed -i '/^TARGET_DEVICES +=/d' "$MK"
+          echo 'TARGET_DEVICES += qihoo_360v6' >> "$MK"
+          echo "=== 修改后 TARGET_DEVICES ==="
+          grep "TARGET_DEVICES" "$MK"
+
+          # ── 7. 清理并重新应用配置 ──────────────────────────────
+          # 去掉旧的设备锁定和 PARTSIZE
+          sed -i '/CONFIG_TARGET_.*DEVICE.*/d' .config
+          sed -i '/CONFIG_TARGET_ROOTFS_PARTSIZE/d' .config
+          sed -i '/# CONFIG_PACKAGE_luci-app-opkg is not set/d' .config
+
+          # 重新写入设备锁定
+          echo 'CONFIG_TARGET_qualcommax_ipq60xx_DEVICE_qihoo_360v6=y' > .temp
+          cat .config >> .temp
+          mv .temp .config
+          echo "✅ 设备锁定写入完成"
+
+          # 展开配置
+          make defconfig 2>&1 | tail -5
+
+          # 最终验证
+          if grep -q "^CONFIG_TARGET_qualcommax_ipq60xx_DEVICE_qihoo_360v6=y" .config; then
+            echo "✅ 设备锁定：qihoo_360v6"
+          else
+            echo "❌ 设备锁定失败"
+            grep "CONFIG_TARGET_.*DEVICE.*=y" .config
+            exit 1
+          fi
+
+          # ── 8. 验证配置最终状态 ──────────────────────────────────
+          echo "=== 最终配置关键项 ==="
+          grep -E "PARTSIZE|dockerd|samba4-server|adguardhome|lucky" .config
+
+          # ── 9. 复制预置配置文件（含 USB 挂载脚本）────────────────
+          mkdir -p files/etc/uci-defaults
+          mkdir -p files/etc/sysctl.d
+          mkdir -p files/root
+          cp "${GITHUB_WORKSPACE}/files/etc/uci-defaults/99-custom-ip" \
+             files/etc/uci-defaults/99-custom-ip
+          cp "${GITHUB_WORKSPACE}/files/etc/sysctl.d/99-bbr.conf" \
+             files/etc/sysctl.d/99-bbr.conf
+          cp "${GITHUB_WORKSPACE}/files/etc/uci-defaults/98-network-check" \
+             files/etc/uci-defaults/98-network-check
+          cp "${GITHUB_WORKSPACE}/files/etc/uci-defaults/97-fix-apk-feeds" \
+             files/etc/uci-defaults/97-fix-apk-feeds
+          cp "${GITHUB_WORKSPACE}/files/etc/uci-defaults/96-install-docker" \
+             files/etc/uci-defaults/96-install-docker
+          cp "${GITHUB_WORKSPACE}/files/etc/uci-defaults/95-install-extras" \
+             files/etc/uci-defaults/95-install-extras
+          cp "${GITHUB_WORKSPACE}/files/etc/uci-defaults/94-mount-usb-docker" \
+             files/etc/uci-defaults/94-mount-usb-docker
+          cp "${GITHUB_WORKSPACE}/files/root/flashing-guide.txt" \
+             files/root/flashing-guide.txt
+          
+          # 设置执行权限
+          chmod +x files/etc/uci-defaults/94-mount-usb-docker
+          chmod +x files/etc/uci-defaults/95-install-extras
+          chmod +x files/etc/uci-defaults/96-install-docker
+          chmod +x files/etc/uci-defaults/97-fix-apk-feeds
+          chmod +x files/etc/uci-defaults/98-network-check
+          chmod +x files/etc/uci-defaults/99-custom-ip
+          
+          echo "✅ 预置配置文件已复制（含 94-mount-usb-docker）"
+          echo "=== USB 存储配置 ==="
+          echo "脚本: 94-mount-usb-docker（自动挂载 USB，配置 Docker 数据目录）"
+          echo "策略: 大包二进制在固件，运行时数据在 USB"
+          echo "空间: overlay 100MB（固件） + USB 无限扩展"
 
           # ── 1. 验证 PARTSIZE=100 ──────────────────────────────
           if ! grep -q "^CONFIG_TARGET_ROOTFS_PARTSIZE=100" .config; then
