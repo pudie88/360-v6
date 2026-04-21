@@ -16,13 +16,25 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup environment
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential ccache ecj fastjar file g++ gawk             gettext git java-propose-classpath libelf-dev libncurses5-dev             libncursesw5-dev libssl-dev python3 python2.7-dev python3-pip             python3-setuptools python3-dev rsync subversion swig time             xsltproc zlib1g-dev
 
       - name: Debug configuration
-        run: cat .config | grep -E "^(CONFIG_TARGET_ROOTFS_PARTSIZE=|CONFIG_PACKAGE_sing-box=|CONFIG_PACKAGE_dockerd=|CONFIG_PACKAGE_samba4-server=|CONFIG_PACKAGE_adguardhome=|CONFIG_PACKAGE_lucky=)" || true
+        run: |
+          echo "=== Configuration Debug ==="
+          grep -E "^(CONFIG_TARGET_ROOTFS_PARTSIZE=|CONFIG_PACKAGE_sing-box=|CONFIG_PACKAGE_dockerd=|CONFIG_PACKAGE_samba4-server=|CONFIG_PACKAGE_adguardhome=|CONFIG_PACKAGE_lucky=)" .config || true
+          echo "=== Key config values ==="
+          echo "PARTSIZE: $(grep '^CONFIG_TARGET_ROOTFS_PARTSIZE=' .config || echo 'NOT FOUND')"
+          echo "sing-box: $(grep '^CONFIG_PACKAGE_sing-box=' .config || echo 'NOT FOUND')"
 
       - name: Validate PARTSIZE for 70MB build
         run: |
@@ -42,20 +54,37 @@ jobs:
             exit 1
           fi
 
-      - name: Build OpenWrt
-        uses: coolsnowwolf/action-build-openwrt@main
-        with:
-          config_path: '.config'
-          target: 'snapshots'
-          profile: '360,v6'
-          firmware_size_limit: 70
-          package_repo: 'openwrt'
-          use_docker: true
+      - name: Clone OpenWrt source
+        run: |
+          git clone https://github.com/openwrt/openwrt.git --depth=1
+          cd openwrt
+
+      - name: Copy configuration
+        run: cp ../.config openwrt/
+
+      - name: Make defconfig
+        run: |
+          cd openwrt
+          make defconfig
+
+      - name: Download feeds
+        run: |
+          cd openwrt
+          ./scripts/feeds update -a
+          ./scripts/feeds install -a
+
+      - name: Build firmware
+        run: |
+          cd openwrt
+          make -j$(nproc) V=s
 
       - name: Check firmware size
         run: |
+          cd openwrt
           echo "=== Firmware size check ==="
           find bin -name "*.bin" -o -name "*.img" | while read f; do
             size=$(du -h "$f" | cut -f1)
             echo "$f: $size"
           done
+          echo "=== Total size ==="
+          du -sh bin/
