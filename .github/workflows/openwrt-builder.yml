@@ -1,1 +1,61 @@
-     1|File unchanged since last read. The content from the earlier read_file result in this conversation is still current — refer to that instead of re-reading.
+name: OpenWrt Builder
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - '.config'
+      - '.github/workflows/*'
+  workflow_dispatch:
+    inputs:
+      reason:
+        description: 'Reason for manual trigger'
+        required: false
+        default: 'Manual build trigger'
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Debug configuration
+        run: cat .config | grep -E "^(CONFIG_TARGET_ROOTFS_PARTSIZE=|CONFIG_PACKAGE_sing-box=|CONFIG_PACKAGE_dockerd=|CONFIG_PACKAGE_samba4-server=|CONFIG_PACKAGE_adguardhome=|CONFIG_PACKAGE_lucky=)" || true
+
+      - name: Validate PARTSIZE for 70MB build
+        run: |
+          if ! grep -q "^CONFIG_TARGET_ROOTFS_PARTSIZE=20" .config; then
+            echo "❌ PARTSIZE is not 20"
+            grep "PARTSIZE" .config || echo "(not found)"
+            exit 1
+          fi
+          echo "✅ PARTSIZE=20 validated (extreme minimal)"
+
+      - name: Validate sing-box is retained
+        run: |
+          if grep -q "^CONFIG_PACKAGE_sing-box=y" .config; then
+            echo "✅ sing-box is enabled"
+          else
+            echo "❌ sing-box is not enabled"
+            exit 1
+          fi
+
+      - name: Build OpenWrt
+        uses: coolsnowwolf/action-build-openwrt@main
+        with:
+          config_path: '.config'
+          target: 'snapshots'
+          profile: '360,v6'
+          firmware_size_limit: 70
+          package_repo: 'openwrt'
+          use_docker: true
+
+      - name: Check firmware size
+        run: |
+          echo "=== Firmware size check ==="
+          find bin -name "*.bin" -o -name "*.img" | while read f; do
+            size=$(du -h "$f" | cut -f1)
+            echo "$f: $size"
+          done
