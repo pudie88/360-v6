@@ -1,5 +1,7 @@
 #!/bin/sh
-# 96-install-extras (原版 + V4 优化移植)
+# 96-install-extras [128M-Final]
+# 适用：128M Flash + 512M RAM 设备（如 360 V6 / 小米 CR660x 等）
+# 特性：原版稳定骨架 + V4实用优化 + Flash保护 + 智能重试
 
 DONE_FLAG="/etc/install-extras-done"
 [ -f "$DONE_FLAG" ] && exit 0
@@ -8,7 +10,7 @@ mkdir -p /usr/lib/install-extras
 
 cat > /usr/lib/install-extras/run.sh << 'RUNEOF'
 #!/bin/sh
-LOG_TAG="install-extras"
+LOG_TAG="install-128m-final"
 DONE_FLAG="/etc/install-extras-done"
 LOCK="/tmp/install-extras.lock"
 
@@ -18,32 +20,31 @@ log() { echo "[$(date '+%H:%M:%S')] $1" | logger -t "$LOG_TAG"; }
 [ -f "$LOCK" ] && exit 0
 touch "$LOCK"
 
-log "▶ install-extras 开始（优化版）"
+log "▶ 128M-Final 启动 | Flash保护 + 内存优化"
 
-# ── 清理 video feed ──────────────────────────────────────────────────
+# ── 1. 清理无效源 ──────────────────────────────────────────────────
 for f in /etc/apk/repositories.d/*.list; do
     [ -f "$f" ] && sed -i '/\/video\//d' "$f"
 done
 
-# ── 等待网络 ─────────────────────────────────────────────────────────
+# ── 2. 等待网络（60秒双DNS轮询）────────────────────────────────────
 sleep 10
 NETWORK_OK=0
-for i in $(seq 1 60); do
-    ping -c 1 -W 2 223.5.5.5 >/dev/null 2>&1 && { NETWORK_OK=1; break; }
-    ping -c 1 -W 2 8.8.8.8  >/dev/null 2>&1 && { NETWORK_OK=1; break; }
+for i in $(seq 1 20); do
+    ping -c1 -W2 223.5.5.5 >/dev/null 2>&1 && { NETWORK_OK=1; break; }
+    ping -c1 -W2 8.8.8.8  >/dev/null 2>&1 && { NETWORK_OK=1; break; }
     sleep 3
 done
 if [ "$NETWORK_OK" -eq 0 ]; then
-    log "❌ 网络不可达，等下次 WAN UP 重试"
+    log "❌ 网络不可达，等待下次 WAN UP 重试"
     rm -f "$LOCK"; exit 1
 fi
-log "✅ 网络就绪"
 
-# ── 强制写入公共 DNS ─────────────────────────────────────────────────
+# DNS 注入（绕过 SmartDNS 时序问题）
 printf 'nameserver 223.5.5.5\nnameserver 8.8.8.8\n' > /etc/resolv.conf
-log "✅ DNS 注入：223.5.5.5 / 8.8.8.8"
+log "✅ 网络与 DNS 就绪"
 
-# ── 检测 U 盘 ────────────────────────────────────────────────────────
+# ── 3. 检测 U 盘 ───────────────────────────────────────────────────
 USB_MOUNT=""
 log "⏳ 检测 U 盘挂载..."
 for i in $(seq 1 15); do
@@ -53,13 +54,13 @@ for i in $(seq 1 15); do
     sleep 2
 done
 
-# ═════════════════════════════════════════════════════════════════════
-# 🔧 V4 优化点1：I/O 调度 & 内存优化
-# ═════════════════════════════════════════════════════════════════════
+# ═══════════════════════════════════════════════════════════════════
+# 🔧 优化点1：I/O 调度 & 内存参数（仅当 U 盘存在时）
+# ═══════════════════════════════════════════════════════════════════
 if [ -n "$USB_MOUNT" ]; then
     log "✅ U 盘已挂载: $USB_MOUNT"
     
-    # I/O 调度器优化
+    # I/O 调度器优化（降低写入延迟，延长闪存寿命）
     USB_DEV=$(mount | grep "$USB_MOUNT" | awk '{print $1}' | sed 's/[0-9]*//g')
     if [ -n "$USB_DEV" ] && [ -f "/sys/block/$USB_DEV/queue/scheduler" ]; then
         if grep -q "mq-deadline" "/sys/block/$USB_DEV/queue/scheduler" 2>/dev/null; then
@@ -71,58 +72,61 @@ if [ -n "$USB_MOUNT" ]; then
         fi
     fi
     
-    # 降低 swappiness，减少 U 盘写入
+    # 内存优化：降低 swappiness，减少 U 盘交换写入
     echo "10" > /proc/sys/vm/swappiness 2>/dev/null
-    log "⚡ 内存优化: swappiness=10"
+    # 提高最小空闲内存，避免 512M 设备 OOM
+    echo "16384" > /proc/sys/vm/min_free_kbytes 2>/dev/null
+    log "⚡ 内存优化: swappiness=10, min_free_kbytes=16MB"
 else
-    log "⚠️ 未检测到 U 盘，docker/AdGuardHome 相关将跳过"
+    log "⚠️ 未检测到 U 盘，重型应用将跳过（保护 Flash）"
 fi
 
-# ═════════════════════════════════════════════════════════════════════
-# 🔧 V4 优化点2：智能 Swap（自动创建）
-# ═════════════════════════════════════════════════════════════════════
-if [ -n "$USB_MOUNT" ] && [ ! -f "$USB_MOUNT/swapfile" ]; then
-    MEM_TOTAL=$(free -k | awk '/^Mem:/ {print $2}')
-    # 512MB 内存，创建 256MB swap 足够
-    if [ "$MEM_TOTAL" -lt 1048576 ]; then
-        log "⏳ 自动创建 256MB Swap..."
-        dd if=/dev/zero of="$USB_MOUNT/swapfile" bs=1M count=256 2>/dev/null
-        mkswap "$USB_MOUNT/swapfile" 2>/dev/null
-        chmod 600 "$USB_MOUNT/swapfile"
-        swapon "$USB_MOUNT/swapfile" 2>/dev/null && log "✅ Swap 已启用"
+# ═══════════════════════════════════════════════════════════════════
+# 🔧 优化点2：智能 Swap（512M 内存 → 256M Swap）
+# ═══════════════════════════════════════════════════════════════════
+if [ -n "$USB_MOUNT" ]; then
+    if [ ! -f "$USB_MOUNT/swapfile" ]; then
+        MEM_TOTAL=$(free -k | awk '/^Mem:/ {print $2}')
+        # 512MB 内存设备，创建 256MB Swap 性价比最高
+        if [ "$MEM_TOTAL" -lt 1048576 ]; then
+            log "⏳ 自动创建 256MB Swap..."
+            dd if=/dev/zero of="$USB_MOUNT/swapfile" bs=1M count=256 2>/dev/null
+            mkswap "$USB_MOUNT/swapfile" >/dev/null 2>&1
+            chmod 600 "$USB_MOUNT/swapfile"
+            swapon "$USB_MOUNT/swapfile" 2>/dev/null && log "✅ Swap 已启用"
+        fi
+    else
+        # 复用已有 Swap
+        swapon "$USB_MOUNT/swapfile" 2>/dev/null && log "✅ 已有 Swap 已启用"
     fi
-elif [ -n "$USB_MOUNT" ] && [ -f "$USB_MOUNT/swapfile" ]; then
-    # 原版逻辑：检测到现有 swapfile 就启用
-    swapon "$USB_MOUNT/swapfile" 2>/dev/null && log "✅ 已开启现有 Swap"
 fi
 
-# ── apk update ───────────────────────────────────────────────────────
+# ── 4. 智能 apk update（HTTPS→HTTP 自动降级）───────────────────────
 apk_update_ok() {
     local out n
     out=$(apk update 2>&1)
     echo "$out" | logger -t "$LOG_TAG"
     n=$(echo "$out" | grep -oE 'OK: [0-9]+ distinct' | grep -oE '[0-9]+')
-    [ "${n:-0}" -gt 1000 ] && return 0
-
-    log "⚠️ HTTPS 包数不足（${n:-0}），切换 HTTP..."
+    [ "${n:-0}" -gt 500 ] && return 0  # 128M 设备阈值降低
+    
+    log "⚠️ 包数不足，切换 HTTP 源重试"
     for f in /etc/apk/repositories.d/*.list; do
-        [ -f "$f" ] && sed -i \
-            's|https://downloads.immortalwrt.org|http://downloads.immortalwrt.org|g' "$f"
+        [ -f "$f" ] && sed -i 's|https://|http://|g' "$f"
     done
     out=$(apk update 2>&1)
     echo "$out" | logger -t "$LOG_TAG"
     n=$(echo "$out" | grep -oE 'OK: [0-9]+ distinct' | grep -oE '[0-9]+')
-    [ "${n:-0}" -gt 1000 ] && return 0
+    [ "${n:-0}" -gt 500 ] && return 0
     return 1
 }
 
 if ! apk_update_ok; then
-    log "❌ apk update 失败，等下次重试"
+    log "❌ apk update 失败，等待下次重试"
     rm -f "$LOCK"; exit 1
 fi
 log "✅ apk update 成功"
 
-# ── 安装函数 ─────────────────────────────────────────────────────────
+# ── 5. 安装函数（带错误计数 + 日志）────────────────────────────────
 INSTALL_FAIL=0
 install_pkg() {
     local out ret
@@ -138,88 +142,122 @@ install_pkg() {
     fi
 }
 
-# ── 轻量工具 ─────────────────────────────────────────────────────────
+# ── 6. 🔧 Flash 空间预检（128M 设备核心保护！）────────────────────
+FLASH_FREE=$(df /overlay | awk 'NR==2 {print $4}')
+FLASH_USED=$(df /overlay | awk 'NR==2 {print $5}' | tr -d '%')
+log "📊 Flash 状态: 已用 ${FLASH_USED}% | 剩余 ${FLASH_FREE}KB"
+
+# 剩余 <25MB 时跳过可选 LuCI 插件，保命优先
+if [ "${FLASH_FREE:-0}" -lt 25000 ]; then
+    log "⚠️ Flash 剩余 <25MB，跳过可选 LuCI 插件（保空间）"
+    SKIP_OPTIONAL_LUCI=1
+else
+    SKIP_OPTIONAL_LUCI=0
+fi
+
+# ── 7. 基础工具（必装，体积小）────────────────────────────────────
 install_pkg smartmontools bash htop fdisk lsblk
 
-# ── 中等体积 ─────────────────────────────────────────────────────────
-install_pkg samba4-server luci-app-samba4 luci-i18n-samba4-zh-cn
+# ── 8. Samba（服务端 + 可选 LuCI）──────────────────────────────────
+install_pkg samba4-server
+if [ "$SKIP_OPTIONAL_LUCI" -eq 0 ]; then
+    install_pkg luci-app-samba4 luci-i18n-samba4-zh-cn
+else
+    log "ℹ️ 跳过 luci-app-samba4（Flash 紧张）"
+fi
 
-# ── 重型应用 ─────────────────────────────────────────────────────────
+# ── 9. 重型应用（仅当 U 盘存在时安装）──────────────────────────────
 if [ -n "$USB_MOUNT" ]; then
-    log "⚙️ U 盘已就绪，准备安装重型应用..."
+    log "⚙️ U 盘就绪: $USB_MOUNT | 安装重型应用..."
 
-    # Docker
-    mkdir -p "$USB_MOUNT/docker-data"
-    mkdir -p /etc/docker
-    printf '{\n  "data-root": "%s/docker-data",\n  "log-driver": "json-file",\n  "log-opts": {"max-size": "10m", "max-file": "3"}\n}\n' \
-        "$USB_MOUNT" > /etc/docker/daemon.json
-    log "✅ daemon.json 已写入，data-root → $USB_MOUNT/docker-data"
+    # ── 9.1 Docker（128M 优化配置）────────────────────────────────
+    mkdir -p "$USB_MOUNT/docker-data" /etc/docker
+    
+    # 🔧 日志限制：5m×2（原10m×3），单容器最多10M日志，保护存储
+    cat > /etc/docker/daemon.json << EOF
+{
+  "data-root": "$USB_MOUNT/docker-data",
+  "log-driver": "json-file",
+  "log-opts": {"max-size": "5m", "max-file": "2"}
+}
+EOF
+    log "✅ Docker 配置: data-root=$USB_MOUNT/docker-data | 日志限制 5m×2"
 
     install_pkg docker dockerd
-    install_pkg luci-app-dockerman luci-i18n-dockerman-zh-cn
+    
+    # 🔧 dockerman 插件可选安装（省 8M Flash）
+    if [ "$SKIP_OPTIONAL_LUCI" -eq 0 ]; then
+        install_pkg luci-app-dockerman luci-i18n-dockerman-zh-cn
+    else
+        log "ℹ️ 跳过 luci-app-dockerman（Flash 紧张，可用 CLI 管理）"
+    fi
 
-    mountpoint -q /sys/fs/cgroup || \
-        mount -t cgroup2 none /sys/fs/cgroup 2>/dev/null || true
-
+    # 启动 Docker（加 || true 防止 mount 失败导致脚本退出）
+    mountpoint -q /sys/fs/cgroup || mount -t cgroup2 none /sys/fs/cgroup 2>/dev/null || true
     /etc/init.d/dockerd enable 2>/dev/null || true
-    /etc/init.d/dockerd start  2>/dev/null || true
-    log "✅ Docker 已启动，数据目录 → $USB_MOUNT/docker-data"
+    /etc/init.d/dockerd start 2>/dev/null || true
+    log "✅ Docker 已启动"
 
-    # AdGuardHome
-    install_pkg adguardhome luci-app-adguardhome
+    # ── 9.2 AdGuardHome（数据重定向 + 可选 LuCI）──────────────────
+    install_pkg adguardhome
+    
+    if [ "$SKIP_OPTIONAL_LUCI" -eq 0 ]; then
+        install_pkg luci-app-adguardhome
+    else
+        log "ℹ️ 跳过 luci-app-adguardhome（Flash 紧张，可用 Web:3000 管理）"
+    fi
 
     AGH_USB="$USB_MOUNT/AdGuardHome"
-    mkdir -p "$AGH_USB/data"
-    mkdir -p "$AGH_USB/config"
+    mkdir -p "$AGH_USB/data" "$AGH_USB/config"
 
     /etc/init.d/adguardhome stop 2>/dev/null || true
 
-    if [ ! -f "$AGH_USB/config/adguardhome.yaml" ] && \
-       [ -f "/etc/adguardhome/adguardhome.yaml" ]; then
-        cp -a /etc/adguardhome/. "$AGH_USB/config/"
-        log "✅ 新环境，初始配置已写入 U 盘 → $AGH_USB/config/"
-    else
-        log "ℹ️ U 盘已存在旧配置，直接复用，不覆盖"
+    # 迁移旧配置（仅首次）
+    if [ ! -f "$AGH_USB/config/adguardhome.yaml" ] && [ -f "/etc/adguardhome/adguardhome.yaml" ]; then
+        cp -a /etc/adguardhome/. "$AGH_USB/config/" 2>/dev/null
+        log "✅ AGH 配置已迁移至 U 盘"
     fi
 
-    uci set adguardhome.config.config_file="$AGH_USB/config/adguardhome.yaml"
-    uci set adguardhome.config.work_dir="$AGH_USB/data"
-    uci commit adguardhome
-    log "✅ AdGuardHome uci 配置已更新"
+    # uci 配置（可能失败但不致命，加 || true）
+    uci set adguardhome.config.config_file="$AGH_USB/config/adguardhome.yaml" 2>/dev/null || true
+    uci set adguardhome.config.work_dir="$AGH_USB/data" 2>/dev/null || true
+    uci commit adguardhome 2>/dev/null || true
 
     /etc/init.d/adguardhome enable 2>/dev/null || true
-    /etc/init.d/adguardhome start  2>/dev/null || true
-    log "✅ AdGuardHome 已启动，完全运行于 U 盘"
+    /etc/init.d/adguardhome start 2>/dev/null || true
+    log "✅ AdGuardHome 已启动 | 数据: $AGH_USB"
 
 else
-    log "ℹ️ 无 U 盘，跳过 AdGuardHome 和 Docker 安装"
-    log "ℹ️ 插入 U 盘后执行: rm /etc/install-extras-done && reboot"
+    log "ℹ️ 无 U 盘，跳过 Docker/AdGuardHome（保护 Flash）"
+    log "ℹ️ 插入 U 盘后执行: rm -f $DONE_FLAG && reboot"
 fi
 
-# ── 刷新 LuCI ────────────────────────────────────────────────────────
-rm -f /tmp/luci-indexcache* 2>/dev/null
+# ── 10. 刷新 LuCI & 清理 ───────────────────────────────────────────
+rm -f /tmp/luci-indexcache* 2>/dev/null || true
 /etc/init.d/rpcd restart 2>/dev/null || true
-
-rm -f /etc/hotplug.d/iface/99-install-extras
 rm -f "$LOCK"
 
-# ── 写 DONE_FLAG ─────────────────────────────────────────────────────
+# ── 11. 完成判断 & 重试机制 ────────────────────────────────────────
 if [ "$INSTALL_FAIL" -eq 0 ]; then
+    # 最终 Flash 检查
+    FLASH_FINAL=$(df /overlay | awk 'NR==2 {print $5}' | tr -d '%')
     touch "$DONE_FLAG"
-    log "🎉 install-extras 全部完成"
+    log "🎉 128M-Final 部署完成！"
+    log "📊 Flash 使用: ${FLASH_FINAL}% | 数据已重定向到 U 盘"
+    if [ "${FLASH_FINAL:-0}" -gt 90 ]; then
+        log "⚠️ 警告: Flash 使用率 >90%，建议执行: opkg clean && logread -c"
+    fi
 else
-    log "⚠️ 有 $INSTALL_FAIL 组包失败，下次 WAN UP 重试"
+    log "⚠️ 有 $INSTALL_FAIL 组包失败，下次 WAN UP 自动重试"
+    # 保留 hotplug 以便重试
     mkdir -p /etc/hotplug.d/iface
-    cat > /etc/hotplug.d/iface/99-install-extras << 'HOTPLUGEOF'
+    cat > /etc/hotplug.d/iface/99-install-extras << 'RETRYEOF'
 #!/bin/sh
 [ "$ACTION" = "ifup" ] || exit 0
 [ -f /etc/install-extras-done ] && exit 0
-case "$INTERFACE" in
-    wan|wan6|pppoe-wan) ;;
-    *) exit 0 ;;
-esac
+case "$INTERFACE" in wan|wan6|pppoe-wan) ;; *) exit 0 ;; esac
 /usr/lib/install-extras/run.sh &
-HOTPLUGEOF
+RETRYEOF
     chmod +x /etc/hotplug.d/iface/99-install-extras
 fi
 RUNEOF
@@ -228,18 +266,14 @@ chmod +x /usr/lib/install-extras/run.sh
 
 # ── 安装 hotplug 触发器 ──────────────────────────────────────────────
 mkdir -p /etc/hotplug.d/iface
-cat > /etc/hotplug.d/iface/99-install-extras << 'HOTPLUGEOF'
+cat > /etc/hotplug.d/iface/99-install-extras << 'HOTEOF'
 #!/bin/sh
 [ "$ACTION" = "ifup" ] || exit 0
 [ -f /etc/install-extras-done ] && exit 0
-case "$INTERFACE" in
-    wan|wan6|pppoe-wan) ;;
-    *) exit 0 ;;
-esac
+case "$INTERFACE" in wan|wan6|pppoe-wan) ;; *) exit 0 ;; esac
 /usr/lib/install-extras/run.sh &
-HOTPLUGEOF
-
+HOTEOF
 chmod +x /etc/hotplug.d/iface/99-install-extras
 
-logger -t "96-install-extras" "✅ hotplug 触发器已安装（优化版）"
+logger -t "install-128m-final" "✅ 128M-Final 就绪 | Flash 保护模式"
 exit 0
