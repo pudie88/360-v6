@@ -175,17 +175,6 @@ rm -f /etc/install-extras-done
 
 ---
 
-## 许可证
-
-MIT License
-```
-
-这个 README 包含了：
-- 功能概述
-- 工作原理（两阶段设计）
-- 编译配置（具体到 .config 条目）
-- 使用说明
-- 故障排查
 - 核心特性表格
 - 体积说明
 
