@@ -1,0 +1,39 @@
+#!/bin/sh
+# 99-custom-ip
+
+# ── LAN 配置 ─────────────────────────────────────────────────────────
+uci set network.lan.ipaddr='192.168.2.1'
+uci set network.lan.netmask='255.255.255.0'
+uci commit network
+
+# ── WAN 确保 DHCP ─────────────────────────────────────────────────────
+WAN_PROTO=$(uci get network.wan.proto 2>/dev/null)
+if [ "$WAN_PROTO" != "dhcp" ]; then
+    uci set network.wan.proto='dhcp'
+    uci commit network
+    logger -t "99-custom-ip" "WAN proto 修正为 dhcp（原值: ${WAN_PROTO:-未设置}）"
+fi
+
+# ── smartdns 配置 ──────────────────────────────────────────────────────
+# 关键：默认 enabled='0'，必须显式设为 1，否则 procd 不启动实例
+# 导致 dnsmasq 转发到 127.0.0.1#5335 无响应，全系统 DNS 断掉
+uci set smartdns.@smartdns[0].enabled='1'
+uci set smartdns.@smartdns[0].port='5335'
+uci set smartdns.@smartdns[0].ipv6_server='0'
+uci delete smartdns.@smartdns[0].bind 2>/dev/null || true
+uci commit smartdns
+/etc/init.d/smartdns enable
+
+# ── dnsmasq 配置 ───────────────────────────────────────────────────────
+# 主转发 smartdns:5335，加公共 DNS 兜底防止 smartdns 未就绪时断联
+uci delete dhcp.@dnsmasq[0].server 2>/dev/null || true
+uci add_list dhcp.@dnsmasq[0].server='127.0.0.1#5335'
+uci add_list dhcp.@dnsmasq[0].server='223.5.5.5'
+uci add_list dhcp.@dnsmasq[0].server='8.8.8.8'
+uci set dhcp.@dnsmasq[0].noresolv='1'
+uci set dhcp.@dnsmasq[0].localuse='1'
+uci set dhcp.@dnsmasq[0].dnsforwardmax='1000'
+uci commit dhcp
+
+logger -t "99-custom-ip" "✅ LAN=192.168.2.1 WAN=dhcp smartdns:5335(enabled) dnsmasq兜底=223.5.5.5/8.8.8.8"
+exit 0
