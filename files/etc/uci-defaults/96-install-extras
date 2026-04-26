@@ -127,10 +127,10 @@ _LOCK="/tmp/install-usb.lock"
 _SD="/etc/install-state"
 _MF="/etc/install-usb-mount"
 
-# Docker 版本候选（官方 aarch64 静态二进制目录实际存在的版本，降序）
+# Docker 版本候选（官方 aarch64 静态二进制版本，从新到旧）
 # 来源：https://download.docker.com/linux/static/stable/aarch64/
-# 注意：25.x+ 不再提供 aarch64 静态包，需改用 apk 或 moby
-_DOCKER_VERS="24.0.7 24.0.6 24.0.5 23.0.6 23.0.5"
+# 新版本包含安全更新和 bug 修复，24.0.x 作为最后兜底
+_DOCKER_VERS="28.1.0 28.0.4 27.5.1 27.5.0 26.1.4 26.1.3 25.0.5 25.0.4 24.0.9 24.0.7"
 _DOCKER_BASE="https://download.docker.com/linux/static/stable/aarch64"
 _AGH_URL="https://static.adguard.com/adguardhome/release/AdGuardHome_linux_arm64.tar.gz"
 
