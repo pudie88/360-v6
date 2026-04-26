@@ -1,7 +1,7 @@
 # 🚀 360 V6 homeproxy代理基础版+一键扩展脚本
 
 无 U 盘 = HomeProxy 代理基础版，插 U 盘 = 全自动扩展部署。
-> **128M Flash + 512M RAM**，插上 U 盘 → WAN 上线 → 全自动部署 Docker/AdGuardHome/Samba。
+128M Flash + 512M RAM**，插上 U 盘 → WAN 上线 → 全自动部署 Docker/AdGuardHome/Samba。
 
 ---
 
