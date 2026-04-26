@@ -1,5 +1,5 @@
 #!/bin/sh
-# 96-install-extras [v9 - Final Stable]
+# 96-install-extras [v10 - Bug Fix]
 # 适用：360 V6 / 小米 CR660x / IPQ6000 (128M Flash / ImmortalWrt / busybox ash)
 #
 # 架构：
@@ -20,6 +20,12 @@
 #   - block hotplug 等待挂载最长 60 秒（实测 30 秒不够）
 #   - dockerd 用 procd 管理，respawn retry=0（无限重启）
 #   - cron 自愈在 Phase 1 完成后才触发 Phase 2
+#
+# v10 修复（基于实测日志）：
+#   1. 下载后用 tar -tzf 校验完整性，损坏文件立即删除强制重新下载
+#   2. 自愈模式消除并发竞争：直接在当前进程调用而非后台 &
+#   3. 360v6-status 在 phase2 失败时明确提示"下载失败"原因
+#   4. 360v6-health 在 install-usb-done 不存在时也检查 phase2 失败状态
 
 _STATE_DIR="/etc/install-state"
 mkdir -p "$_STATE_DIR" /usr/lib/install-extras /usr/bin \
@@ -44,7 +50,18 @@ _p1=$(cat "$_SD/phase1-failures" 2>/dev/null || echo 0)
 [ -f /etc/install-usb-done ] \
     && echo "[OK] 重型应用：已完成" || echo "[..] 重型应用：待 U 盘"
 _p2=$(cat "$_SD/phase2-failures" 2>/dev/null || echo 0)
-[ "$_p2" -gt 0 ] && echo "     失败次数: $_p2/3"
+if [ "$_p2" -gt 0 ]; then
+    echo "     失败次数: $_p2/3"
+    # 检查下载缓存是否损坏
+    _dldir=$(cat /etc/install-usb-mount 2>/dev/null)
+    if [ -n "$_dldir" ] && [ -d "$_dldir/.downloads" ]; then
+        for _f in "$_dldir/.downloads"/*.tgz "$_dldir/.downloads"/*.tar.gz; do
+            [ -f "$_f" ] || continue
+            tar -tzf "$_f" >/dev/null 2>&1 \
+                || echo "     ⚠ 损坏缓存: $(basename $_f)（重跑时将自动清理）"
+        done
+    fi
+fi
 
 echo ""
 df -h /overlay 2>/dev/null \
@@ -127,7 +144,10 @@ if [ "$__self_heal" -eq 1 ]; then
     for _mp in /mnt/sda1 /mnt/sda /mnt/sdb1 /mnt/sdb /mnt/usb /mnt/mmcblk0p1; do
         _is_mounted "$_mp" && {
             log "自愈触发: $_mp"
-            /usr/lib/install-extras/install-usb.sh "$_mp" &
+            # 先写锁再调用，消除并发竞争窗口
+            # 同步调用（不用 &）：自愈本身就在 cron 后台，无需再后台
+            echo $$ > "$_LOCK"
+            /usr/lib/install-extras/install-usb.sh "$_mp"
             exit 0
         }
     done
@@ -284,7 +304,13 @@ if [ "$_DOCKER_FAIL" -eq 0 ]; then
     __ddata="$_USB/docker-data"
     mkdir -p "$__dbin" "$__ddata" /etc/docker
 
-    # 已有缓存则跳过下载
+    # 已有缓存则跳过下载，但先校验完整性
+    if [ -f "$__dtgz" ]; then
+        if ! tar -tzf "$__dtgz" >/dev/null 2>&1; then
+            log "缓存文件损坏，删除并重新下载: $(basename $__dtgz)"
+            rm -f "$__dtgz"
+        fi
+    fi
     if [ ! -f "$__dtgz" ]; then
         _download "$_DOCKER_BASE/docker-${__docker_ver}.tgz" \
                   "$__dtgz" "Docker $__docker_ver" \
@@ -296,7 +322,8 @@ if [ "$_DOCKER_FAIL" -eq 0 ]; then
         # docker tgz 结构：docker/<binaries>，一层目录
         tar -xzf "$__dtgz" -C "$__dbin" --strip-components=1 2>/dev/null
         if [ ! -f "$__dbin/dockerd" ]; then
-            log "解压后未找到 dockerd，放弃"
+            log "解压后未找到 dockerd，缓存可能损坏，删除后下次重试"
+            rm -f "$__dtgz"
             _DOCKER_FAIL=1
         fi
     fi
@@ -387,6 +414,12 @@ __aconf="$_USB/AdGuardHome/config"
 __adata="$_USB/AdGuardHome/data"
 mkdir -p "$__abin" "$__aconf" "$__adata"
 
+if [ -f "$__atgz" ]; then
+    if ! tar -tzf "$__atgz" >/dev/null 2>&1; then
+        log "AGH 缓存文件损坏，删除并重新下载"
+        rm -f "$__atgz"
+    fi
+fi
 if [ ! -f "$__atgz" ]; then
     _download "$_AGH_URL" "$__atgz" "AdGuardHome" \
         || { _AGH_FAIL=1; rm -f "$__atgz"; }
@@ -406,7 +439,8 @@ if [ "$_AGH_FAIL" -eq 0 ] && [ -f "$__atgz" ]; then
         mv "$__abin/AdGuardHome_bin" "$__abin/AdGuardHome"
     fi
     if [ ! -f "$__abin/AdGuardHome" ]; then
-        log "AdGuardHome 解压失败，未找到二进制"
+        log "AdGuardHome 解压失败，未找到二进制，删除缓存后下次重试"
+        rm -f "$__atgz"
         _AGH_FAIL=1
     else
         chmod +x "$__abin/AdGuardHome"
@@ -830,6 +864,33 @@ if [ -f /etc/install-usb-done ]; then
     fi
 fi
 
+# 检查：Phase 2 安装失败（即使 usb-done 不存在也要报告）
+if [ ! -f /etc/install-usb-done ]; then
+    __p2f=$(cat /etc/install-state/phase2-failures 2>/dev/null || echo 0)
+    __usb_mp2=$(cat /etc/install-usb-mount 2>/dev/null)
+    if [ "${__p2f:-0}" -gt 0 ] && [ -n "$__usb_mp2" ]; then
+        log "重型应用安装失败（$__p2f/3 次）- U 盘已就绪但部署未完成"
+        # 提示用户检查缓存损坏
+        if [ -d "$__usb_mp2/.downloads" ]; then
+            for _cf in "$__usb_mp2/.downloads"/*.tgz "$__usb_mp2/.downloads"/*.tar.gz; do
+                [ -f "$_cf" ] || continue
+                tar -tzf "$_cf" >/dev/null 2>&1 \
+                    || log "  损坏缓存: $(basename $_cf)"
+            done
+        fi
+        if [ "$__fix" -eq 1 ]; then
+            log "--fix: 清理失败计数并触发重试..."
+            rm -f /etc/install-state/phase2-failures
+            /usr/lib/install-extras/install-usb.sh "$__usb_mp2" --force &
+            log "Phase 2 重试已在后台启动"
+        else
+            __status=1; __failed="$__failed phase2-install"
+        fi
+    elif [ -n "$__usb_mp2" ]; then
+        log "重型应用：U 盘已就绪，等待首次触发"
+    fi
+fi
+
 # 检查：Swap
 if [ -f /etc/install-usb-done ]; then
     if ! grep -q swapfile /proc/swaps 2>/dev/null; then
@@ -905,6 +966,6 @@ chmod +x /etc/hotplug.d/block/97-usb-protect
 # ══════════════════════════════════════════════════════════════
 # 完成（只安装哨兵，不在此处触发 run.sh）
 # ══════════════════════════════════════════════════════════════
-logger -t "install-extras" "v9 哨兵安装完成，等待 WAN 上线触发"
+logger -t "install-extras" "v10 哨兵安装完成，等待 WAN 上线触发"
 logger -t "install-extras" "执行 '360v6-status' 查看状态"
 exit 0
