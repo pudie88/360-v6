@@ -1,4 +1,4 @@
-# 🚀 360 V6 一键扩展脚本 [v11.3]
+# 🚀 360 V6 homeproxy代理基础版+一键扩展脚本 [v11.3]
 
 > 专为 **360 V6 / 小米 CR660x / IPQ6000** 设计。  
 > **128M Flash + 512M RAM**，插上 U 盘 → WAN 上线 → 全自动部署 Docker/AdGuardHome/Samba。
